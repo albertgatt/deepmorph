@@ -141,12 +141,12 @@ class MorphModel(object):
 
 
 	#test learned neural network
-	def generate_prob(word):
+	def generate_prob(self, word):
 		label_prefix = [ self.__label_edge_index ]
 		encoded_word = np.array([[ self.__char_encoder[ch] for ch in word ]], 'int32')
 		
 		for _ in range(10): #max length
-			probs = model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
+			probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
 		
 			while True:
 				selected_index = np.argmax(np.random.multinomial(1, probs))
@@ -163,12 +163,12 @@ class MorphModel(object):
 	
 
 	#test learned neural network
-	def generate(word):	      
+	def generate(self, word):	      
 		label_prefix = [ self.__label_edge_index ]
 		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
 		
-		for _ in range(max_word_length): #max length
-			probs = model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
+		for _ in range(self.max_word_length): #max length
+			probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
 			selected_index = np.argmax(probs)
 
 			if selected_index == self.__label_edge_index:
@@ -186,17 +186,17 @@ if __name__ == '__main__':
 	labeldata = "../data/labels-split.txt"
 	modelsdir = "../models"
 	
-	#train a model
-	m = MorphModel()
-	m.read_labels(labeldata)
-	m.train(trainingdata)
+	#train a model 
+	# m = MorphModel()
+	# m.read_labels(labeldata)
+	# m.train(trainingdata)
 	
-	if m.save_model(os.path.join(modelsdir, 'model.1.simple')):
-		print("Model saved")
+	# if m.save_model(os.path.join(modelsdir, 'model.1.simple')):
+	# 	print("Model saved")
 	
 
 	#read in a pre-trained model
 	m = MorphModel()
 	m.read_labels(labeldata)
 	m.load_model(os.path.join(modelsdir, 'model.1.simple'))
-	m.generate('qatluh')
+	print(m.generate('qatluh'))
