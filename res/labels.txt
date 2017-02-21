@@ -1,0 +1,12 @@
+Imperative
+Imperfective
+Negative
+P1 Pl
+P1 Sg
+P2 Pl
+P2 Sg
+P3 Pl
+P3 Sg Fem
+P3 Sg Masc
+Perfective
+Positive

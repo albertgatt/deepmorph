@@ -1,0 +1,16 @@
+sraqt	Perfective - P1 - Sg - Neut - Positive
+sraqt	Perfective - P2 - Sg - Neut - Positive
+seraq	Perfective - P3 - Sg - Masc - Positive
+serqet	Perfective - P3 - Sg - Fem - Positive
+sraqna	Perfective - P1 - Pl - Neut - Positive
+sraqtu	Perfective - P2 - Pl - Neut - Positive
+serqu	Perfective - P3 - Pl - Neut - Positive
+nisroq	Imperfective - P1 - Sg - Neut - Positive
+tisroq	Imperfective - P2 - Sg - Neut - Positive
+jisroq	Imperfective - P3 - Sg - Masc - Positive
+tisroq	Imperfective - P3 - Sg - Fem - Positive
+nisorqu	Imperfective - P1 - Pl - Neut - Positive
+tisorqu	Imperfective - P2 - Pl - Neut - Positive
+jisorqu	Imperfective - P3 - Pl - Neut - Positive
+isroq	Imperative - P2 - Sg - Neut - Positive
+isorqu	Imperative - P2 - Pl - Neut - Positive

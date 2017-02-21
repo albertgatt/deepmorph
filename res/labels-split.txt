@@ -1,0 +1,13 @@
+Imperative
+Imperfective
+Negative
+P1
+P2
+P3
+Sg
+Pl
+Fem
+Masc
+Neut
+Positive
+Perfective
