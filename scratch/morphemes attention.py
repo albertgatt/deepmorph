@@ -11,7 +11,7 @@ char_decoder   = { i+1: ch for (i, ch) in enumerate(chars) }
 char_pad_index = 0
 chars_size     = len(chars)+1
 
-with open('labels.txt', 'r', encoding='utf-8') as f:
+with open('../data/labels-split.txt', 'r', encoding='utf-8') as f:
     labels = f.read().split('\n')
 label_encoder    = { label: i+2 for (i, label) in enumerate(labels) }
 label_decoder    = { i+2: label for (i, label) in enumerate(labels) }
@@ -24,7 +24,7 @@ max_word_len = 10
 trainingset_word         = list()
 trainingset_label_prefix = list()
 trainingset_label_target = list()
-with open('trainingset.txt', 'r', encoding='utf-8') as f:
+with open('../data/trainingset.txt', 'r', encoding='utf-8') as f:
     for line in f:
         (word, labels) = line.strip().split('\t') 
         encoded_word = [ char_encoder[ch] for ch in word ]
