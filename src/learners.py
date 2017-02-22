@@ -8,6 +8,7 @@ from keras.optimizers import *
 from keras.preprocessing.sequence import *
 import numpy as np
 import os
+import tarfile
 
 class MorphModel(object):
 
@@ -24,9 +25,10 @@ class MorphModel(object):
 		self.__label_decoder = {}
 		self.__model = None
 		self.__attn = None
+		self.__tar = False #flag if we've used a tarfile
 
 		#characters initially set by default (but can reset)
-		self.chars = 'abċdefġgħhijklmnopqrstuvwxżz'		
+		self.chars = "abċdefġgħhijklmnopqrstuvwxżz'"		
 
 	@property
 	def chars(self):
@@ -47,12 +49,12 @@ class MorphModel(object):
 	def max_word_length(self):
 		return self.__max_word_length
 
-	# @max_word_length.setter
-	# def max_word_length(self, l):
-	#   if l is not None and l > 0:
-	#       self.__max_word_length = l          
-	#   else:
-	#       raise RuntimeError('Max word length has to be 1 or more')
+	@max_word_length.setter
+	def max_word_length(self, l):
+	   if l is not None and l > 0:
+		   self.__max_word_length = l          
+	   else:
+		   raise RuntimeError('Max word length has to be 1 or more')
 
 	@property
 	def labels(self):
@@ -90,7 +92,7 @@ class MorphModel(object):
 		trainingset_label_target = list()
 
 		with open(training, 'r', encoding='utf-8') as f:
-			for line in f:
+			for line in f:				
 				(word, labels) = line.strip().split('\t') 
 
 				#set max length
@@ -114,15 +116,43 @@ class MorphModel(object):
 		return (trainingset_word, trainingset_label_prefix, trainingset_label_target)
 	
 
+	def __unzip_file(self, f):
+		"""Utiility method to unzip a file
+		"""
+		tar = tarfile.open(name=f)
+		trainfile = tar.getnames()[0]
+		print(trainfile)
+		os.mkdir('tmp')
+		tar.extractall(path='tmp/')
+		self.__tar = True #for later, to clean up
+		return os.path.join("tmp", trainfile)
+
+
+	def __cleanup(self):
+		if self.__tar:
+			for root, dirs, files in os.walk('./tmp', topdown=False):
+				for name in files:
+					os.remove(os.path.join(root, name))
+				for name in dirs:
+					os.rmdir(os.path.join(root, name))
+			os.rmdir('./tmp')
+
+
 	def train(self, training):
 		"""Train a simple model.
 
-		:param training: Path to the file containing training data
+		:param training: Path to the file containing training data. File must be a utf-8 text file or a zipped tar.
 		:type training: string
 		"""
 		#first, check that we have labels etc
 		if not self.__check():
 			raise RuntimeError('Labels and characters are not set')
+
+
+		#check if file is zipped
+		if tarfile.is_tarfile(training):
+			print("Training data is zipped -- unpacking to tmp directory")
+			training = self.__unzip_file(training)
 
 		(trainingset_word, trainingset_label_prefix, trainingset_label_target) = self.__setup(training)
 
@@ -149,16 +179,23 @@ class MorphModel(object):
 		# #train
 		self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=100)
 
+		##clean up if we need to
+		self.__cleanup()
 
 	def train_attention(self, training):
 		"""Train a model with an attention mechanism.
 
-		:param training: Path to the training data file
+		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
 		:type training: string
 		"""
 		#first, check that we have labels etc
 		if not self.__check():
 			raise RuntimeError('Labels and characters are not set')
+
+		#check if file is zipped
+		if tarfile.is_tarfile(training):
+			print("Training data is zipped -- unpacking to tmp directory")
+			training = self.__unzip_file(training)
 
 		(trainingset_word, trainingset_label_prefix, trainingset_label_target) = self.__setup(training)
 
@@ -192,6 +229,8 @@ class MorphModel(object):
 		#train
 		self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=300)
 
+		##clean up if we have to
+		self.__cleanup()
 
 	def save(self, dirpath, name):
 		"""Save the model and attentional model (if any).
@@ -251,24 +290,25 @@ class MorphModel(object):
 
 if __name__ == '__main__':
 
-	trainingdata = "../data/trainingset.txt"
+	trainingdata = "../data/gabra-verbs.tar.bz2"
 	labeldata = "../data/labels-split.txt"
 	modelsdir = "../models"
 	testword = "seraqhom"
 	
 	#train a model 
-	# m = MorphModel()
-	# m.read_labels(labeldata)
-	# m.train_attention(trainingdata)
-	# m.save(modelsdir, "test")
+	m = MorphModel()
+	m.read_labels(labeldata)
+	#m.train_attention(trainingdata)
+	m.train(trainingdata)
+	m.save(modelsdir, "verbs.1")
 
 	#read in a pre-trained model
-	print("Loading")
-	m = MorphModel()
-	m.read_labels(labeldata) #always do this first!
-	m.load(os.path.join(modelsdir, 'test.model'))
-	m.load_attn(os.path.join(modelsdir, 'test.attn'))
-	print(m.generate(testword))
+	# print("Loading")
+	# m = MorphModel()
+	# m.read_labels(labeldata) #always do this first!
+	# m.load(os.path.join(modelsdir, 'test.model'))
+	# m.load_attn(os.path.join(modelsdir, 'test.attn'))
+	# print(m.generate(testword))
 	
 	print()
 
