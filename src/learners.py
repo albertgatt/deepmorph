@@ -6,13 +6,26 @@ from keras.layers import *
 from keras.models import *
 from keras.optimizers import *
 from keras.preprocessing.sequence import *
+from keras.callbacks import ModelCheckpoint
 import numpy as np
 import os
 import tarfile
+import json
 
 class MorphModel(object):
 
-	def __init__(self):		
+	#Constants to control how to save
+	SAVE_PER_EPOCH = 2 #don't use yet
+	SAVE_MODEL_HISTORY = 2 #save both model and history
+	SAVE_MODEL = 1 #save model only
+
+
+	def __init__(self, name):
+		"""Initialise a container object for a keras/theano model.
+		:param name: A name for the model (this is used in the filenaming convention for saving the model)
+		:type name: string
+		"""		
+		self.name = name
 		self.__label_pad_index = 0
 		self.__label_edge_index = 1
 		self.__char_pad_index = 0
@@ -25,9 +38,11 @@ class MorphModel(object):
 		self.__label_decoder = {}
 		self.__model = None
 		self.__attn = None
+		self.__hist = None
 		self.__tar = False #flag if we've used a tarfile
 
 		#characters initially set by default (but can reset)
+		#NB: Include the apostrophe (')
 		self.chars = "abċdefġgħhijklmnopqrstuvwxżz'"		
 
 	@property
@@ -100,7 +115,7 @@ class MorphModel(object):
 					self.max_word_length = len(word)
 
 				encoded_word = [ self.__char_encoder[ch] for ch in word ]               
-				encoded_labels = [ self.__label_edge_index ] + [ self.__label_encoder[label] for label in labels.split(' - ') ] + [ self.__label_edge_index ]
+				encoded_labels = [ self.__label_edge_index ]  + [ self.__label_encoder[label] for label in labels.split(' - ') ]  + [ self.__label_edge_index ]
 
 				for i in range(1, len(encoded_labels)):
 					trainingset_word.append(encoded_word)
@@ -109,7 +124,9 @@ class MorphModel(object):
 					one_hot[encoded_labels[i]] = 1
 					trainingset_label_target.append(one_hot)
 					
-		trainingset_word         = pad_sequences(trainingset_word, maxlen=self.max_word_length, value=self.__char_pad_index)
+		trainingset_word         = pad_sequences(trainingset_word, 
+												maxlen=self.max_word_length, 
+												value=self.__char_pad_index)
 		trainingset_label_prefix = pad_sequences(trainingset_label_prefix, value=self.__label_pad_index)
 		trainingset_label_target = np.array(trainingset_label_target, 'bool')
 
@@ -120,12 +137,15 @@ class MorphModel(object):
 		"""Utiility method to unzip a file
 		"""
 		tar = tarfile.open(name=f)
-		trainfile = tar.getnames()[0]
-		print(trainfile)
-		os.mkdir('tmp')
+		filename = tar.getnames()[0]
+		print(filename)
+
+		if not os.path.isdir('tmp'):
+			os.mkdir('tmp')
+	
 		tar.extractall(path='tmp/')
 		self.__tar = True #for later, to clean up
-		return os.path.join("tmp", trainfile)
+		return os.path.join("tmp", filename)
 
 
 	def __cleanup(self):
@@ -138,12 +158,19 @@ class MorphModel(object):
 			os.rmdir('./tmp')
 
 
-	def train(self, training):
-		"""Train a simple model.
+	def train(self, training, epochs, save_dir = ".", save = SAVE_MODEL_HISTORY):
+		"""Train a model with an attention mechanism.
 
-		:param training: Path to the file containing training data. File must be a utf-8 text file or a zipped tar.
+		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
+		:param epochs: Number of training epochs
+		:param savedir: Path to destination directory for model files. If unspecified, saves to current directory.
+		:param save: Control how model is saved.
 		:type training: string
+		:type epochs: int
+		:type save_dir: string
+		:type save: int
 		"""
+
 		#first, check that we have labels etc
 		if not self.__check():
 			raise RuntimeError('Labels and characters are not set')
@@ -158,12 +185,14 @@ class MorphModel(object):
 
 		#define architecture
 		input_word             = Input(shape=(None,), dtype='int32')
-		embedded_chars         = Embedding(input_dim=self.__chars_size, output_dim=32, mask_zero=True)(input_word)
+		embedded_chars         = Embedding(input_dim=self.__chars_size, 
+											output_dim=32, mask_zero=True)(input_word)
 		embedded_chars_dropout = Dropout(0.5)(embedded_chars)
 		encoded_word           = SimpleRNN(32)(embedded_chars_dropout)
 
 		input_label_prefix      = Input(shape=(None,), dtype='int32')
-		embedded_labels         = Embedding(input_dim=self.labels_size, output_dim=32, mask_zero=True)(input_label_prefix)
+		embedded_labels         = Embedding(input_dim=self.labels_size, 
+											output_dim=32, mask_zero=True)(input_label_prefix)
 		embedded_labels_dropout = Dropout(0.5)(embedded_labels)
 		encoded_label_prefix    = SimpleRNN(32)(embedded_labels_dropout)
 
@@ -176,17 +205,37 @@ class MorphModel(object):
 		# #define learning method
 		self.__model.compile(optimizer=Adam(), loss='categorical_crossentropy')
 
-		# #train
-		self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=100)
+		#train
+		#if save == MorphModel.SAVE:
+			#save_callback = ModelCheckpoint(os.path.join(save_dir, self.name) + ".{epoch:02d}-{loss:.2f}.hdf5")
+			#history = self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=epochs, callbacks=[save_callback])
+
+		#else:
+		self.__hist = self.__model.fit([trainingset_word, 
+										trainingset_label_prefix], 
+										trainingset_label_target, 
+										batch_size=10, nb_epoch=epochs)
+		self.save_model(save_dir)
+
+		if save == MorphModel.SAVE_MODEL_HISTORY:
+			self.save_history(save_dir)		
 
 		##clean up if we need to
 		self.__cleanup()
 
-	def train_attention(self, training):
+
+
+	def train_attention(self, training, epochs, save_dir = ".", save = SAVE_MODEL_HISTORY):
 		"""Train a model with an attention mechanism.
 
 		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
+		:param epochs: Number of epochs to use
+		:param savedir: Path to destination directory for model files. If unspecified, saves to current directory.
+		:param save: Control how model is saved.
 		:type training: string
+		:type epochs: int
+		:type save_dir: string
+		:type save: int
 		"""
 		#first, check that we have labels etc
 		if not self.__check():
@@ -225,27 +274,59 @@ class MorphModel(object):
 
 		#define learning method
 		self.__model.compile(optimizer=Adam(), loss='categorical_crossentropy')
+		self.__attn.compile(optimizer=Adam(), loss='categorical_crossentropy')
+		
+		#train, either saving per epoch or not
+		# if save == MorphModel.SAVE_PER_EPOCH:
+		# 	save_callback = ModelCheckpoint(os.path.join(save_dir, self.name) + ".{epoch:02d}-{loss:.2f}.hdf5")
+		# 	hisory = self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=epochs, callbacks=[save_callback])
+		# 	self.save_attention(save_dir)
+		# 	self.save(save_dir)
+		# else:
+		self.__hist = self.__model.fit([trainingset_word, 
+										trainingset_label_prefix], 
+										trainingset_label_target, 
+										batch_size=10, nb_epoch=epochs)
+		self.save_model(save_dir)
+		self.save_attention(save_dir)
 
-		#train
-		self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=300)
+		if save == MorphModel.SAVE_MODEL_HISTORY:
+			self.save_history(save_dir)
 
 		##clean up if we have to
 		self.__cleanup()
 
-	def save(self, dirpath, name):
-		"""Save the model and attentional model (if any).
+	def save_history(self, dirpath):
+		if self.__hist is None:
+			return False
+
+		filename = self.name + ".hist.json"
+
+		with open(os.path.join(dirpath, filename), 'w', encoding='utf-8') as histfile:
+			histfile.write(json.dumps(self.__hist.history, sort_keys=True))	
+
+		return True
+
+	def save_attention(self, dirpath):
+		if self.__attn is not None:
+			self.__attn.save(os.path.join(dirpath, self.name + ".attn"))
+			return True
+		return False
+
+	def save_model(self, dirpath):
+		"""Save the model and attentions (if any). 
+		The model is saved in a file with the name specified in the constructor.
+
 		:param dirpath: Directory path
-		:param name: Filename prefix to use
 		:type dispath: string
-		:type name: string
 		:return: True if there is a precompiled model which can be saved
 		"""
-		if self.__attn is not None:
-			self.__attn.save(os.path.join(dirpath, name + ".attn"))
+		#self.save_attention(dirpath)
 		
 		if self.__model is not None:
-			self.__model.save(os.path.join(dirpath, name + ".model"))
+			self.__model.save(os.path.join(dirpath, self.name + ".hdf5"))
 			return True
+		
 		return False
 
 
@@ -255,6 +336,32 @@ class MorphModel(object):
 
 	def load_attn(self, filepath):
 		self.__attn = load_model(filepath)
+
+	def evaluate(self, testdata):
+		#check if file is zipped
+		if tarfile.is_tarfile(testdata):
+			print("Test data is zipped -- unpacking to tmp directory")
+			testdata = self.__unzip_file(testdata)
+
+		with open(testdata, 'r', encoding='utf-8') as test:
+			lines = test.readlines()
+			total = len(lines)
+			correct = 0
+
+			for line in lines:
+				(word, labels) = line.strip().split('\t') 
+				labels = labels.split(' - ')	
+				predictions = self.generate(word)
+
+				if predictions == labels:
+					correct += 1
+
+				print(word + '\t' + ' - '.join(predictions) + '\t' + str(predictions == labels) )
+
+			print()
+			print('Correct: ' + str(correct) + ' ' + str(correct/total))
+
+		self.__cleanup()
 
 	#test learned neural network
 	def generate(self, word):	      
@@ -275,6 +382,7 @@ class MorphModel(object):
 		
 		return [ self.__label_decoder[index] for index in label_prefix[1:] ]
 
+
 	def get_attentions(self, word):
 		attentions = list()
 		label_prefix = [ self.__label_edge_index ]
@@ -289,31 +397,31 @@ class MorphModel(object):
 
 
 if __name__ == '__main__':
-
-	trainingdata = "../data/gabra-verbs.tar.bz2"
-	labeldata = "../data/labels-split.txt"
+	data = "../data"
+	training = "gabra-verbs-train.tar.bz2"
+	testing = "gabra-verbs-test.tar.bz2"
+	labeldata = "labels-split.txt"
 	modelsdir = "../models"
-	testword = "seraqhom"
 	
 	#train a model 
-	m = MorphModel()
-	m.read_labels(labeldata)
-	#m.train_attention(trainingdata)
-	m.train(trainingdata)
-	m.save(modelsdir, "verbs.1")
+	m = MorphModel("verbs.att.1")
+	m.read_labels(os.path.join(data, labeldata))
+	#m.train(os.path.join(data,training), 50, modelsdir, MorphModel.SAVE_PER_EPOCH)
+	#m.train_attention(os.path.join(data,training), 1, modelsdir, MorphModel.SAVE_PER_EPOCH)
 
-	#read in a pre-trained model
-	# print("Loading")
-	# m = MorphModel()
-	# m.read_labels(labeldata) #always do this first!
-	# m.load(os.path.join(modelsdir, 'test.model'))
-	# m.load_attn(os.path.join(modelsdir, 'test.attn'))
-	# print(m.generate(testword))
+	m.load(os.path.join(modelsdir, 'verbs.att.1.hdf5'))	
+	m.load_attn(os.path.join(modelsdir, 'verbs.att.1.attn'))
+	#print()
+
+	#with open(os.path.join(data, testing), 'r', encoding='utf-8') as test:
+	# 	testwords = [x.strip() for x in test.readlines()]
+
+	# 	for testword in testwords:
+	# 		print(testword + "\t" + str(m.generate(testword)))
 	
-	print()
-
-	attentions = m.get_attentions(testword)
-	print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
-	for (label, attention) in zip(m.labels, attentions):
-		print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ]))
+	m.evaluate(os.path.join(data, testing))
+	# attentions = m.get_attentions(testword)
+	# print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
+	# for (label, attention) in zip(m.labels, attentions):
+	# 	print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ]))
 	
