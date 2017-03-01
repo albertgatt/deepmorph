@@ -6,7 +6,7 @@ from keras.layers import *
 from keras.models import *
 from keras.optimizers import *
 from keras.preprocessing.sequence import *
-from keras.callbacks import ModelCheckpoint
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 import numpy as np
 import os
 import tarfile
@@ -40,10 +40,15 @@ class MorphModel(object):
 		self.__attn = None
 		self.__hist = None
 		self.__tar = False #flag if we've used a tarfile
+		self.optimiser = Adam() #Default optimiser
+		self.validation_split = 0.1
+		self.batch_size = 10
+		self.loss_function = "categorical_crossentropy"
 
 		#characters initially set by default (but can reset)
 		#NB: Include the apostrophe (')
-		self.chars = "abċdefġgħhijklmnopqrstuvwxżz'"		
+		self.chars = "abċdefġgħhijklmnopqrstuvwxżz'"	
+
 
 	@property
 	def chars(self):
@@ -158,16 +163,18 @@ class MorphModel(object):
 			os.rmdir('./tmp')
 
 
-	def train(self, training, epochs, save_dir = ".", save = SAVE_MODEL_HISTORY):
-		"""Train a model with an attention mechanism.
+	def train(self, training, epochs, save_dir = ".", callback = [], save = SAVE_MODEL_HISTORY):
+		"""Train a simple RNN model. Unless otherwise set, this will train with a validation split of 10%. 
 
 		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
 		:param epochs: Number of training epochs
 		:param savedir: Path to destination directory for model files. If unspecified, saves to current directory.
+		:param callbacks: Callbacks to pass to the model.fit funciton in Keras. If None or empty (the default), no callbacks are passed.
 		:param save: Control how model is saved.
 		:type training: string
 		:type epochs: int
 		:type save_dir: string
+		:type callbacks: list
 		:type save: int
 		"""
 
@@ -184,6 +191,7 @@ class MorphModel(object):
 		(trainingset_word, trainingset_label_prefix, trainingset_label_target) = self.__setup(training)
 
 		#define architecture
+		# input --> embedding
 		input_word             = Input(shape=(None,), dtype='int32')
 		embedded_chars         = Embedding(input_dim=self.__chars_size, 
 											output_dim=32, mask_zero=True)(input_word)
@@ -203,7 +211,7 @@ class MorphModel(object):
 		self.__model = Model(input=[input_word, input_label_prefix], output=distribution)
 
 		# #define learning method
-		self.__model.compile(optimizer=Adam(), loss='categorical_crossentropy')
+		self.__model.compile(optimizer=self.optimiser, loss=self.loss_function)
 
 		#train
 		#if save == MorphModel.SAVE:
@@ -211,10 +219,14 @@ class MorphModel(object):
 			#history = self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=epochs, callbacks=[save_callback])
 
 		#else:
+		if callback is None: callbacks = [] #In case some smartass passes a None
+
 		self.__hist = self.__model.fit([trainingset_word, 
 										trainingset_label_prefix], 
 										trainingset_label_target, 
-										batch_size=10, nb_epoch=epochs)
+										validation_split=self.validation_split, 
+										batch_size=self.batch_size, nb_epoch=epochs, callbacks=callback)
+		
 		self.save_model(save_dir)
 
 		if save == MorphModel.SAVE_MODEL_HISTORY:
@@ -225,16 +237,18 @@ class MorphModel(object):
 
 
 
-	def train_attention(self, training, epochs, save_dir = ".", save = SAVE_MODEL_HISTORY):
+	def train_attention(self, training, epochs, save_dir = ".", callback=[], save = SAVE_MODEL_HISTORY):
 		"""Train a model with an attention mechanism.
 
 		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
 		:param epochs: Number of epochs to use
-		:param savedir: Path to destination directory for model files. If unspecified, saves to current directory.
+		:param save_dir: Path to destination directory for model files. If unspecified, saves to current directory.
+		:param callback: Callbacks to include in the model fitting. If None or empty (the default), no callbacks are used.
 		:param save: Control how model is saved.
 		:type training: string
 		:type epochs: int
 		:type save_dir: string
+		:type callback: list
 		:type save: int
 		"""
 		#first, check that we have labels etc
@@ -273,8 +287,8 @@ class MorphModel(object):
 		self.__attn  = Model(input=[input_word, input_label_prefix], output=attention)
 
 		#define learning method
-		self.__model.compile(optimizer=Adam(), loss='categorical_crossentropy')
-		self.__attn.compile(optimizer=Adam(), loss='categorical_crossentropy')
+		self.__model.compile(optimizer=self.optimiser, loss=self.loss_function)
+		#self.__attn.compile(optimizer=Adam(), loss='categorical_crossentropy')
 		
 		#train, either saving per epoch or not
 		# if save == MorphModel.SAVE_PER_EPOCH:
@@ -283,10 +297,14 @@ class MorphModel(object):
 		# 	self.save_attention(save_dir)
 		# 	self.save(save_dir)
 		# else:
+		if callback is None: callbacks = [] #In case some smartass passes a None
+
 		self.__hist = self.__model.fit([trainingset_word, 
 										trainingset_label_prefix], 
 										trainingset_label_target, 
-										batch_size=10, nb_epoch=epochs)
+										validation_split=self.validation_split, 
+										batch_size=self.batch_size, nb_epoch=epochs, callbacks=callback)
+
 		self.save_model(save_dir)
 		self.save_attention(save_dir)
 
@@ -337,7 +355,28 @@ class MorphModel(object):
 	def load_attn(self, filepath):
 		self.__attn = load_model(filepath)
 
-	def evaluate(self, testdata):
+	def evaluate(self, testdata, header=None, testoutput=None):
+		'''EValuate the model against some test data.
+		:param testdata: file path to the test data file (text or tar archive)
+		:param testoutput: file path to an output file to write results. If None, write to stdout
+		:param header: list of items to include in the header of the eval file. If None, no header is written
+		:type testdata: string
+		:type header: list
+		:type testoutput: string
+		'''
+		total_correct = 0
+		total = 0
+		per_class = []
+
+		if testoutput == None:
+			output = lambda x:   sys.stdout.write("\t".join(map(str,x)) + "\n")
+		else:
+			out = open(testoutput, 'w', encoding='utf-8')
+			output = lambda x:   out.write("\t".join(map(str,x)) + "\n")
+
+		if header is not None:
+			output(header)
+
 		#check if file is zipped
 		if tarfile.is_tarfile(testdata):
 			print("Test data is zipped -- unpacking to tmp directory")
@@ -346,20 +385,28 @@ class MorphModel(object):
 		with open(testdata, 'r', encoding='utf-8') as test:
 			lines = test.readlines()
 			total = len(lines)
-			correct = 0
 
 			for line in lines:
 				(word, labels) = line.strip().split('\t') 
 				labels = labels.split(' - ')	
 				predictions = self.generate(word)
 
-				if predictions == labels:
-					correct += 1
-
-				print(word + '\t' + ' - '.join(predictions) + '\t' + str(predictions == labels) )
+				#1 or 0 per label, and 1 or 0 for the whole
+				accfunc = lambda tup: 1 if tup[0] == tup[1] else 0
+				correct = accfunc((labels, predictions))
+				total_correct += correct
+				acc = list(map(accfunc, zip(labels, predictions)))
+	
+				if len(per_class) == 0:
+					per_class = acc
+				else:
+					per_class = [x + y for (x,y) in zip(per_class, acc)]
+	
+				output([word] + acc + [correct])
 
 			print()
-			print('Correct: ' + str(correct) + ' ' + str(correct/total))
+			print('Accuracy: ' + str(total_correct) + ' ' + str(total_correct/total))
+			print("Per-class: " + "\t".join(map(str,[x/total for x in per_class])))
 
 		self.__cleanup()
 
@@ -399,27 +446,26 @@ class MorphModel(object):
 if __name__ == '__main__':
 	data = "../data"
 	training = "gabra-verbs-train.tar.bz2"
-	testing = "gabra-verbs-test.tar.bz2"
+	testing =  "gabra-verbs-test.tar.bz2"
+	evalfile = "verbs.attention.txt"
+	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
 	labeldata = "labels-split.txt"
-	modelsdir = "../models"
+	modelsdir = "../models/attnRNN - val 10 - 100 epochs"
 	
 	#train a model 
-	m = MorphModel("verbs.att.1")
+	m = MorphModel("verbs.attention_ep100_lr0.1_mom0.1")
 	m.read_labels(os.path.join(data, labeldata))
-	#m.train(os.path.join(data,training), 50, modelsdir, MorphModel.SAVE_PER_EPOCH)
-	#m.train_attention(os.path.join(data,training), 1, modelsdir, MorphModel.SAVE_PER_EPOCH)
+	m.optimiser = SGD(lr=0.01, momentum=0.1)
+	callbacks = [EarlyStopping(monitor='val_loss', patience=2)] #Stop if validation loss does not improve after 2 epochs
+	#m.train(os.path.join(data,training), 300, modelsdir, callback=callbacks)
+	#m.validation_split = 0.0
+	m.train_attention(os.path.join(data,training), 100, modelsdir)
 
-	m.load(os.path.join(modelsdir, 'verbs.att.1.hdf5'))	
-	m.load_attn(os.path.join(modelsdir, 'verbs.att.1.attn'))
+	#m.load(os.path.join(modelsdir, 'verbs.att.1.hdf5'))	
+	#m.load_attn(os.path.join(modelsdir, 'verbs.att.1.attn'))
 	#print()
-
-	#with open(os.path.join(data, testing), 'r', encoding='utf-8') as test:
-	# 	testwords = [x.strip() for x in test.readlines()]
-
-	# 	for testword in testwords:
-	# 		print(testword + "\t" + str(m.generate(testword)))
 	
-	m.evaluate(os.path.join(data, testing))
+	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	# attentions = m.get_attentions(testword)
 	# print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
 	# for (label, attention) in zip(m.labels, attentions):
