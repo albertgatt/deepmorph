@@ -1,0 +1,16 @@
+sraqt	perf - p1 - sg - none - pos
+sraqt	perf - p2 - sg - none - pos
+seraq	perf - p3 - sg - m - pos
+serqet	perf - p3 - sg - f - pos
+sraqna	perf - p1 - pl - none - pos
+sraqtu	perf - p2 - pl - none - pos
+serqu	perf - p3 - pl - none - pos
+nisroq	impf - p1 - sg - none - pos
+tisroq	impf - p2 - sg - none - pos
+jisroq	impf - p3 - sg - m - pos
+tisroq	impf - p3 - sg - f - pos
+nisorqu	impf - p1 - pl - none - pos
+tisorqu	impf - p2 - pl - none - pos
+jisorqu	impf - p3 - pl - none - pos
+isroq	imp - p2 - sg - none - pos
+isorqu	imp - p2 - pl - none - pos
