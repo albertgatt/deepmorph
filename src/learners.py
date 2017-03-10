@@ -143,7 +143,7 @@ class MorphModel(object):
 		"""
 		tar = tarfile.open(name=f)
 		filename = tar.getnames()[0]
-		print(filename)
+		print(filename, flush=True)
 
 		if not os.path.isdir('tmp'):
 			os.mkdir('tmp')
@@ -185,7 +185,7 @@ class MorphModel(object):
 
 		#check if file is zipped
 		if tarfile.is_tarfile(training):
-			print("Training data is zipped -- unpacking to tmp directory")
+			print("Training data is zipped -- unpacking to tmp directory", flush=True)
 			training = self.__unzip_file(training)
 
 		(trainingset_word, trainingset_label_prefix, trainingset_label_target) = self.__setup(training)
@@ -257,7 +257,7 @@ class MorphModel(object):
 
 		#check if file is zipped
 		if tarfile.is_tarfile(training):
-			print("Training data is zipped -- unpacking to tmp directory")
+			print("Training data is zipped -- unpacking to tmp directory", flush=True)
 			training = self.__unzip_file(training)
 
 		(trainingset_word, trainingset_label_prefix, trainingset_label_target) = self.__setup(training)
@@ -379,7 +379,7 @@ class MorphModel(object):
 
 		#check if file is zipped
 		if tarfile.is_tarfile(testdata):
-			print("Test data is zipped -- unpacking to tmp directory")
+			print("Test data is zipped -- unpacking to tmp directory", flush=True)
 			testdata = self.__unzip_file(testdata)
 
 		with open(testdata, 'r', encoding='utf-8') as test:
@@ -405,8 +405,8 @@ class MorphModel(object):
 				output([word] + acc + [correct])
 
 			print()
-			print('Accuracy: ' + str(total_correct) + ' ' + str(total_correct/total))
-			print("Per-class: " + "\t".join(map(str,[x/total for x in per_class])))
+			print('Accuracy: ' + str(total_correct) + ' ' + str(total_correct/total), flush=True)
+			print("Per-class: " + "\t".join(map(str,[x/total for x in per_class])), flush=True)
 
 		self.__cleanup()
 
