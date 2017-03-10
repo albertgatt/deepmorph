@@ -450,7 +450,7 @@ if __name__ == '__main__':
 	evalfile = "verbs.attention.txt"
 	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
 	labeldata = "labels-split.txt"
-	modelsdir = "../models/attnRNN-val10-iter100"
+	modelsdir = "../models/attnRNN-adam-val10-iter100"
 	
 	#train a model 
 	m = MorphModel("verbs.attn.adam.v10-i100")
