@@ -450,13 +450,13 @@ if __name__ == '__main__':
 	evalfile = "verbs.attention.txt"
 	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
 	labeldata = "labels-split.txt"
-	modelsdir = "../models/attnRNN - val 10 - 100 epochs"
+	modelsdir = "../models/attnRNN-val10-iter100"
 	
 	#train a model 
-	m = MorphModel("verbs.attention_ep100_lr0.1_mom0.1")
+	m = MorphModel("verbs.attn.adam.v10-i100")
 	m.read_labels(os.path.join(data, labeldata))
-	m.optimiser = SGD(lr=0.01, momentum=0.1)
-	callbacks = [EarlyStopping(monitor='val_loss', patience=2)] #Stop if validation loss does not improve after 2 epochs
+	#m.optimiser = SGD(lr=0.01, momentum=0.1)
+	#callbacks = [EarlyStopping(monitor='val_loss', patience=5)] #Stop if validation loss does not improve after 2 epochs
 	#m.train(os.path.join(data,training), 300, modelsdir, callback=callbacks)
 	#m.validation_split = 0.0
 	m.train_attention(os.path.join(data,training), 100, modelsdir)
