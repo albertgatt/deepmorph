@@ -444,13 +444,13 @@ class MorphModel(object):
 
 
 if __name__ == '__main__':
-	data = "../data"
+	data = "~/deepmorph/data"
 	training = "gabra-verbs-train.tar.bz2"
 	testing =  "gabra-verbs-test.tar.bz2"
 	evalfile = "verbs.attention.txt"
 	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
 	labeldata = "labels-split.txt"
-	modelsdir = "../models/attnRNN-adam-val10-iter100"
+	modelsdir = "~/deepmorph/models/attnRNN-adam-val10-iter100"
 	
 	#train a model 
 	m = MorphModel("verbs.attn.adam.v10-i100")
