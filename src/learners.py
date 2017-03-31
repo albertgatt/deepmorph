@@ -3,6 +3,7 @@
 __license__ = "MIT"
 
 from keras.layers import *
+from keras.layers.merge import *
 from keras.models import *
 from keras.optimizers import *
 from keras.preprocessing.sequence import *
@@ -415,11 +416,13 @@ class MorphModel(object):
 		if self.__model is None:
 			raise RuntimeError('No model has been loaded or fitted')
 
-		label_prefix = [ self.__label_edge_index ]
+		label_prefix = np.array([ self.__label_edge_index ], 'int32')
 		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
-		
+		print(label_prefix)
+		print(label_prefix.shape)
+
 		for _ in range(self.max_word_length): #max length
-			probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
+			probs = self.__model.predict([ encoded_word, label_prefix ])[0]
 			selected_index = np.argmax(probs)
 
 			if selected_index == self.__label_edge_index:
@@ -442,32 +445,51 @@ class MorphModel(object):
 		
 		return attentions
 
+def train_new(m):
+	callbacks = [EarlyStopping(monitor='val_loss', patience=2),
+				 ModelCheckpoint('attnRNN.{epoch:02d}-{val_loss:.2f}.hdf5', monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1)]
+	m.train_attention(os.path.join(data,training), 100, modelsdir, callback=callbacks)
+
+def load_model(m, model_name):
+	m.load(os.path.join(modelsdir, model_name))	
+	m.load_attn(os.path.join(modelsdir, model_name))
+
+def predict(m, teststring):
+	print("Model predictions:")
+	m.generate(teststring)
+
+	print()
+
+	print("Attentions:")
+	attentions = m.get_attentions(testword)
+	print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
+	for (label, attention) in zip(m.labels, attentions):
+	 	print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ])) 
+
 
 if __name__ == '__main__':
-	data = "/users/agatt/deepmorph/data"
-	training = "gabra-verbs-train.tar.bz2"
+	model_name = "attnRNN-adam-val10-iter100-pat2";
+	data = "../data"
+	training = "train-small.txt" #"gabra-verbs-train.tar.bz2"
 	testing =  "gabra-verbs-test.tar.bz2"
 	evalfile = "verbs.attention.txt"
 	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
 	labeldata = "labels-split.txt"
-	modelsdir = "/users/agatt/deepmorph/models/attnRNN-adam-val10-iter100"
-	
-	#train a model 
-	m = MorphModel("verbs.attn.adam.v10-i100")
-	m.read_labels(os.path.join(data, labeldata))
-	#m.optimiser = SGD(lr=0.01, momentum=0.1)
-	#callbacks = [EarlyStopping(monitor='val_loss', patience=5)] #Stop if validation loss does not improve after 2 epochs
-	#m.train(os.path.join(data,training), 300, modelsdir, callback=callbacks)
-	#m.validation_split = 0.0
-	m.train_attention(os.path.join(data,training), 100, modelsdir)
+	modelsdir = "../models/" . model_name
+	testword = 'ħriġniex'
 
-	#m.load(os.path.join(modelsdir, 'verbs.att.1.hdf5'))	
-	#m.load_attn(os.path.join(modelsdir, 'verbs.att.1.attn'))
-	#print()
+	#initialise
+	m = MorphModel("attnRNN-adam-val10-iter100-pat2")
+	m.read_labels(os.path.join(data, labeldata))
+
+	#train a new model and save to mdoel dir
+	#train_new(m) 
+
+	#load a pretrained model
+	#load_model(m, model_name)
+
+	#evaluate a model on test data 
+	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
-	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
-	# attentions = m.get_attentions(testword)
-	# print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
-	# for (label, attention) in zip(m.labels, attentions):
-	# 	print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ]))
-	
+	#generate predictions for a string
+	#predict(m, testword)
