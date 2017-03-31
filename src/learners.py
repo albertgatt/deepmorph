@@ -350,11 +350,11 @@ class MorphModel(object):
 
 
 	def load(self, filepath):
-		self.__model = load_model(filepath)
+		self.__model = load_model(filepath + ".hdf5")
 
 
 	def load_attn(self, filepath):
-		self.__attn = load_model(filepath)
+		self.__attn = load_model(filepath + ".attn")
 
 	def evaluate(self, testdata, header=None, testoutput=None):
 		'''EValuate the model against some test data.
@@ -450,7 +450,7 @@ def train_new(m):
 				 ModelCheckpoint('attnRNN.{epoch:02d}-{val_loss:.2f}.hdf5', monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1)]
 	m.train_attention(os.path.join(data,training), 100, modelsdir, callback=callbacks)
 
-def load_model(m, model_name):
+def load(m, modelsdir, model_name):
 	m.load(os.path.join(modelsdir, model_name))	
 	m.load_attn(os.path.join(modelsdir, model_name))
 
@@ -468,25 +468,25 @@ def predict(m, teststring):
 
 
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-iter100-pat2";
+	model_name = "attnRNN-adam-val10-i100-pat2.2";
 	data = "../data"
 	training = "train-small.txt" #"gabra-verbs-train.tar.bz2"
 	testing =  "gabra-verbs-test.tar.bz2"
 	evalfile = "verbs.attention.txt"
 	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
 	labeldata = "labels-split.txt"
-	modelsdir = "../models/" . model_name
+	modelsdir = "../models/" + model_name
 	testword = 'ħriġniex'
 
 	#initialise
-	m = MorphModel("attnRNN-adam-val10-iter100-pat2")
+	m = MorphModel(model_name)
 	m.read_labels(os.path.join(data, labeldata))
 
 	#train a new model and save to mdoel dir
 	#train_new(m) 
 
 	#load a pretrained model
-	#load_model(m, model_name)
+	#load(m, modelsdir, model_name)
 
 	#evaluate a model on test data 
 	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
