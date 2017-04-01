@@ -101,6 +101,11 @@ def get_from_db(pos, data_file, gz_file):
 		print("Found total " + str(i) + " wordforms")
 		compress_file(gz_file, data_file)
 
+def reformat(line):
+	items = line.split("\t")
+	result = items[0] + "\t" + " - ".join(items[i:])
+	return result
+
 
 def split(f, train, test, t=90):
 	with open(f, 'r', encoding="utf-8") as data:
@@ -110,10 +115,12 @@ def split(f, train, test, t=90):
 		perc = int(0.9*len(cases))
 
 		with open(train, 'w', encoding="utf-8") as training:
-			training.writelines(cases[0:perc])
+			training.writelines(map(reformat, cases[0:perc]))
+			compress_file(train + ".tar.bz2", train)
 
 		with open(test, 'w', encoding="utf-8") as testing:
-			testing.writelines(cases[perc:])
+			testing.writelines(map(reformat, cases[perc:]))
+			compress_file(test + ".tar.bz2", test)
 
 
 if __name__ == "__main__":
