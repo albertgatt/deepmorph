@@ -30,7 +30,7 @@ def get_verb_features(v, o):
 
 def get_noun_features(n):
 	result = []
-	mapping = {'sp':'none', 'mf': 'none', 'sgv': 'sg', 'verbalnoun': 'none'}
+	mapping = {'sp':'none', 'mf': 'none', 'sgv': 'sg', 'verbalnoun': 'none', 'mimated': 'none', 'pl_ind': 'pl'}
 	
 
 	for f in nsub_features:

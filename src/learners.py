@@ -48,7 +48,7 @@ class MorphModel(object):
 
 		#characters initially set by default (but can reset)
 		#NB: Include the apostrophe (')
-		self.chars = "abċdefġgħhijklmnopqrstuvwxżz'"	
+		self.chars = "abċdefġgħhijklmnopqrstuvwxżz'-àèùcìy"	
 
 
 	@property
@@ -119,9 +119,8 @@ class MorphModel(object):
 				#set max length
 				if len(word) > self.max_word_length:
 					self.max_word_length = len(word)
-
-				encoded_word = [ self.__char_encoder[ch] for ch in word.lower() ]               
-				encoded_labels = [ self.__label_edge_index ]  + [ self.__label_encoder[label] for label.lower() in labels.split(' - ') ]  + [ self.__label_edge_index ]
+				encoded_word = [ self.__char_encoder[ch] for ch in word.strip().lower() ]               
+				encoded_labels = [ self.__label_edge_index ]  + [ self.__label_encoder[label] for label in labels.split(' - ') ]  + [ self.__label_edge_index ]
 
 				for i in range(1, len(encoded_labels)):
 					trainingset_word.append(encoded_word)
@@ -473,7 +472,7 @@ def predict(m, teststring):
 if __name__ == '__main__':
 	model_name = "attnRNN-adam-val10-i100-pat2.nouns"
 	data = "../data"
-	training = "gabra-noun-adj-train.tar.bz2" #"gabra-verbs-train.tar.bz2"
+	training = "gabra-noun-adj-train" #"gabra-verbs-train.tar.bz2"
 	testing =  "gabra-noun-adj-test.tar.bz2" #"gabra-verbs-test.tar.bz2"
 	evalfile = "noun-adj.attention.txt" #"verbs.attention.txt"
 	evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]#["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
