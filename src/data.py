@@ -11,7 +11,7 @@ other_file = '../data/nouns.txt'
 
 #
 vfeatures = ['aspect', 'polarity']
-vsub_features = ['person', 'number', 'gender']
+vsub_features = ['person', 'number', 'gender', 'derived_form']
 nsub_features = ['number', 'gender', 'form']
 
 def get_verb_features(v, o):
