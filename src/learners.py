@@ -471,15 +471,15 @@ def predict(m, teststring):
 
 
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-i100-pat2.2"
+	model_name = "attnRNN-adam-val10-i100-pat2.nouns"
 	data = "../data"
-	training = "gabra-verbs-train.tar.bz2"
-	testing =  "gabra-verbs-test.tar.bz2"
-	evalfile = "verbs.attention.txt"
-	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
-	labeldata = "verb-labels-split.txt"
+	training = "gabra-noun-adj-train.tar.bz2" #"gabra-verbs-train.tar.bz2"
+	testing =  "gabra-noun-adj-test.tar.bz2" #"gabra-verbs-test.tar.bz2"
+	evalfile = "noun-adj.attention.txt" #"verbs.attention.txt"
+	evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]#["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
+	labeldata = "noun-labels-split.txt" #"verb-labels-split.txt"
 	modelsdir = "../models/" + model_name
-	testword = 'ħriġniex'
+	#testword = 'ħriġniex'
 
 	#initialise
 	m = MorphModel(model_name)
