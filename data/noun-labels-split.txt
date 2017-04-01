@@ -5,5 +5,6 @@ coll
 m
 f
 comparative
+superlative
 diminutive
 none
