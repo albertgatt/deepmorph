@@ -120,8 +120,8 @@ class MorphModel(object):
 				if len(word) > self.max_word_length:
 					self.max_word_length = len(word)
 
-				encoded_word = [ self.__char_encoder[ch] for ch in word ]               
-				encoded_labels = [ self.__label_edge_index ]  + [ self.__label_encoder[label] for label in labels.split(' - ') ]  + [ self.__label_edge_index ]
+				encoded_word = [ self.__char_encoder[ch] for ch in word.lower() ]               
+				encoded_labels = [ self.__label_edge_index ]  + [ self.__label_encoder[label] for label.lower() in labels.split(' - ') ]  + [ self.__label_edge_index ]
 
 				for i in range(1, len(encoded_labels)):
 					trainingset_word.append(encoded_word)

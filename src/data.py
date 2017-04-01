@@ -103,7 +103,7 @@ def get_from_db(pos, data_file, gz_file):
 
 def reformat(line):
 	items = line.split("\t")
-	result = items[0] + "\t" + " - ".join(items[i:])
+	result = items[0] + "\t" + " - ".join(items[1:])
 	return result
 
 
@@ -127,6 +127,6 @@ if __name__ == "__main__":
 	#get_from_db(['VERB'], '../data/verbs.txt', '../data/gabra-verbs-all.tar.bz2')
 	#get_from_db(['NOUN', 'ADJ'], '../data/noun-adj.txt', '../data/gabra-noun-adj-all.tar.bz2')
 	#split('../data/verbs.txt', '../data/verbs-train.txt', '../data/verbs-test.txt')
-	split('../data/noun-adj.txt', '../data/noun-adj-train.txt', '../data/noun-adj-test.txt')
+	split('noun-adj.txt', 'noun-adj-train.txt', 'noun-adj-test.txt')
 
 		
