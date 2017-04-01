@@ -30,15 +30,20 @@ def get_verb_features(v, o):
 
 def get_noun_features(n):
 	result = []
-	nonetypes = ['sp', 'mf']
+	mapping = {'sp':'none', 'mf': 'none', 'sgv': 'sg', 'verbalnoun': 'none'}
+	
+
 	for f in nsub_features:
-		if f in n and n[f] is not None:
+		if f in n:
 			value = n[f]
 
-			if value in nonetypes:
+			if value is None or len(value) == 0:
 				value = 'none'
+			elif n[f] in mapping:
+				value = mapping[value]
 
 			result += [value]
+		
 		else:
 			result += ['none']
 
@@ -92,9 +97,10 @@ def get_from_db(pos, data_file, gz_file):
 					except: #skip anything that doesn't have the expected features
 						continue
 				else:
-					try:
+					try:						
 						wf_features += get_noun_features(wf)
-						data.write('\t'.join([str(x) for x in wf_features]) + "\n")
+						data.write('\t'.join([str(x) for x in wf_features]) + "\n")					
+
 					except: #skip anything that doesn't have the expected features
 						continue
 
@@ -124,9 +130,9 @@ def split(f, train, test, t=90):
 
 
 if __name__ == "__main__":
-	#get_from_db(['VERB'], '../data/verbs.txt', '../data/gabra-verbs-all.tar.bz2')
-	#get_from_db(['NOUN', 'ADJ'], '../data/noun-adj.txt', '../data/gabra-noun-adj-all.tar.bz2')
+	#get_from_db(['VERB'], '../data/verbs.txt', '../data/gabra-verbs-all')
+	#get_from_db(['NOUN', 'ADJ'], 'noun-adj.txt', 'gabra-noun-adj-all')
 	#split('../data/verbs.txt', '../data/verbs-train.txt', '../data/verbs-test.txt')
-	split('noun-adj.txt', 'noun-adj-train.txt', 'noun-adj-test.txt')
+	split('noun-adj.txt', 'gabra-noun-adj-train', 'gabra-noun-adj-test')
 
 		
