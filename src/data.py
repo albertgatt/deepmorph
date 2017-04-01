@@ -7,22 +7,40 @@ import random
 client = MongoClient('localhost', 27017)
 db = client.gabra
 verb_file = '../data/verbs.txt'
+other_file = '../data/nouns.txt'
 
 #
-features = ['aspect', 'polarity']
-sub_features = ['person', 'number', 'gender']
+vfeatures = ['aspect', 'polarity']
+vsub_features = ['person', 'number', 'gender']
+nsub_features = ['number', 'gender', 'form']
 
 def get_verb_features(v, o):
 	result = []
 
 	if o in v and v[o] is not None:
-		for s in sub_features:
+		for s in vsub_features:
 			if s in v[o]:
 				result += [v[o][s]]
 			else:
 				result += [None]
 	else:
-		result += [None for x in sub_features]
+		result += [None for x in vsub_features]
+
+	return result
+
+def get_noun_features(n):
+	result = []
+	nonetypes = ['sp', 'mf']
+	for f in nsub_features:
+		if f in n and n[f] is not None:
+			value = n[f]
+
+			if value in nonetypes:
+				value = 'none'
+
+			result += [value]
+		else:
+			result += ['none']
 
 	return result
 
@@ -32,18 +50,22 @@ def compress_file(outfile, fname):
 	tar.add(fname)
 	tar.close()
 
-def get_from_db():
-	with open(verb_file, 'w', encoding="utf-8") as data:
+def get_from_db(pos, data_file, gz_file):
+	with open(data_file, 'w', encoding="utf-8") as data:
 		i = 0;
-		for lexeme in db.lexemes.find({'pos': 'VERB'}):
+		for lexeme in db.lexemes.find({'pos': {"$in": pos}}):
 			
 			lexid = ObjectId(lexeme['_id'])
 			lemma = lexeme['lemma']
 			root = None
 			pos = lexeme['pos']
 
-			if 'root' in lexeme:
-				root = lexeme['root']['radicals']
+			if 'root' in lexeme and lexeme['root'] is not None:
+				try:
+					root = lexeme['root']['radicals']
+				except KeyError:
+					root = None
+
 
 			for wf in db.wordforms.find({'lexeme_id': lexid, 'pending': {"$ne": True}}):
 				i+=1
@@ -57,7 +79,7 @@ def get_from_db():
 				if len(sf.split()) > 1:
 					continue
 				
-				wf_features = [lemma, root, sf] #initial feature vector
+				wf_features = [sf] #[lemma, root, sf] #initial feature vector
 					
 				if pos == 'VERB':
 					#print(sf)
@@ -69,8 +91,16 @@ def get_from_db():
 						data.write('\t'.join([str(x) for x in wf_features]) + "\n")
 					except: #skip anything that doesn't have the expected features
 						continue
-		
-		compress_file('../data/gabra-verbs', verb_file)
+				else:
+					try:
+						wf_features += get_noun_features(wf)
+						data.write('\t'.join([str(x) for x in wf_features]) + "\n")
+					except: #skip anything that doesn't have the expected features
+						continue
+
+		print("Found total " + str(i) + " wordforms")
+		compress_file(gz_file, data_file)
+
 
 def split(f, train, test, t=90):
 	with open(f, 'r', encoding="utf-8") as data:
@@ -87,6 +117,9 @@ def split(f, train, test, t=90):
 
 
 if __name__ == "__main__":
-	split('../data/verbs.txt', '../data/verbs-train.txt', '../data/verbs-test.txt')
+	#get_from_db(['VERB'], '../data/verbs.txt', '../data/gabra-verbs-all.tar.bz2')
+	#get_from_db(['NOUN', 'ADJ'], '../data/noun-adj.txt', '../data/gabra-noun-adj-all.tar.bz2')
+	#split('../data/verbs.txt', '../data/verbs-train.txt', '../data/verbs-test.txt')
+	split('../data/noun-adj.txt', '../data/noun-adj-train.txt', '../data/noun-adj-test.txt')
 
 		

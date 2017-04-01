@@ -273,19 +273,21 @@ class MorphModel(object):
 		word_mask               = Permute((2,1))(RepeatVector(32)(Lambda(lambda x:K.not_equal(x, 0), (self.max_word_length,))(input_word)))
 		embedded_chars          = Embedding(input_dim=self.__chars_size, input_length=self.max_word_length, output_dim=32)(input_word)
 		context_embedded_chars  = Bidirectional(SimpleRNN(32, return_sequences=True), merge_mode='sum')(embedded_chars)
-		masked_embedded_chars   = merge([ context_embedded_chars, word_mask ], mode='mul')
+		masked_embedded_chars   = multiply([context_embedded_chars, word_mask])
+								#merge([ context_embedded_chars, word_mask ], mode='mul')
 		embedded_chars_dropout  = Dropout(0.5)(masked_embedded_chars)
-
-		attention_condition     = merge([ RepeatVector(self.max_word_length)(encoded_label_prefix), embedded_chars_dropout ], mode='concat', concat_axis=2)
+		attention_condition     = concatenate([ RepeatVector(self.max_word_length)(encoded_label_prefix), embedded_chars_dropout ], axis=2)
+								#merge([ RepeatVector(self.max_word_length)(encoded_label_prefix), embedded_chars_dropout ], mode='concat', concat_axis=2)
 		attention               = Dense(self.max_word_length, activation='sigmoid', activity_regularizer='l1')(Flatten()(attention_condition))
-		weighted_embedded_chars = merge([ embedded_chars_dropout, Permute((2,1))(RepeatVector(32)(attention)) ], mode='mul')
+		weighted_embedded_chars = multiply([embedded_chars_dropout, Permute((2,1))(RepeatVector(32)(attention)) ])
+								#merge([ embedded_chars_dropout, Permute((2,1))(RepeatVector(32)(attention)) ], mode='mul')
 		encoded_word            = Lambda(lambda x:K.sum(x, axis=1), output_shape=(32,))(weighted_embedded_chars)
-
-		merged_data             = merge([ encoded_word, encoded_label_prefix ], mode='concat', concat_axis=1)
+		merged_data             = concatenate([encoded_word, encoded_label_prefix], axis=1)
+								#merge([ encoded_word, encoded_label_prefix ], mode='concat', concat_axis=1)
 		distribution            = Dense(self.labels_size, activation='softmax')(merged_data)
 
-		self.__model = Model(input=[input_word, input_label_prefix], output=distribution)
-		self.__attn  = Model(input=[input_word, input_label_prefix], output=attention)
+		self.__model = Model(inputs=[input_word, input_label_prefix], outputs=distribution)
+		self.__attn  = Model(inputs=[input_word, input_label_prefix], outputs=attention)
 
 		#define learning method
 		self.__model.compile(optimizer=self.optimiser, loss=self.loss_function)
@@ -304,7 +306,7 @@ class MorphModel(object):
 										trainingset_label_prefix], 
 										trainingset_label_target, 
 										validation_split=self.validation_split, 
-										batch_size=self.batch_size, nb_epoch=epochs, callbacks=callback)
+										batch_size=self.batch_size, epochs=epochs, callbacks=callback, verbose=2)
 
 		self.save_model(save_dir)
 		self.save_attention(save_dir)
@@ -418,8 +420,6 @@ class MorphModel(object):
 
 		label_prefix = np.array([ self.__label_edge_index ], 'int32')
 		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
-		print(label_prefix)
-		print(label_prefix.shape)
 
 		for _ in range(self.max_word_length): #max length
 			probs = self.__model.predict([ encoded_word, label_prefix ])[0]
@@ -428,7 +428,7 @@ class MorphModel(object):
 			if selected_index == self.__label_edge_index:
 				break
 			
-			label_prefix.append(selected_index)
+			label_prefix = np.append(label_prefix, selected_index)
 		
 		return [ self.__label_decoder[index] for index in label_prefix[1:] ]
 
@@ -445,10 +445,13 @@ class MorphModel(object):
 		
 		return attentions
 
-def train_new(m):
+def train_new(m, modelsdir, datadir, trainfile):
+	print("Training model")
 	callbacks = [EarlyStopping(monitor='val_loss', patience=2),
 				 ModelCheckpoint('attnRNN.{epoch:02d}-{val_loss:.2f}.hdf5', monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1)]
-	m.train_attention(os.path.join(data,training), 100, modelsdir, callback=callbacks)
+	m.train_attention(os.path.join(datadir,trainfile), 100, modelsdir, callback=callbacks)
+	print("Max word length: " + str(m.max_word_length))
+
 
 def load(m, modelsdir, model_name):
 	m.load(os.path.join(modelsdir, model_name))	
@@ -456,7 +459,7 @@ def load(m, modelsdir, model_name):
 
 def predict(m, teststring):
 	print("Model predictions:")
-	m.generate(teststring)
+	print(m.generate(teststring))
 
 	print()
 
@@ -468,9 +471,9 @@ def predict(m, teststring):
 
 
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-i100-pat2.2";
+	model_name = "attnRNN-adam-val10-i100-pat2.2"
 	data = "../data"
-	training = "train-small.txt" #"gabra-verbs-train.tar.bz2"
+	training = "gabra-verbs-train.tar.bz2"
 	testing =  "gabra-verbs-test.tar.bz2"
 	evalfile = "verbs.attention.txt"
 	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
@@ -481,13 +484,14 @@ if __name__ == '__main__':
 	#initialise
 	m = MorphModel(model_name)
 	m.read_labels(os.path.join(data, labeldata))
+	#m.max_word_length = 18 #Have to set this...
 
 	#train a new model and save to mdoel dir
-	#train_new(m) 
+	train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
 	#load(m, modelsdir, model_name)
-
+	
 	#evaluate a model on test data 
 	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
