@@ -1,0 +1,8 @@
+sg
+pl
+dl
+coll
+m
+f
+comparative
+none

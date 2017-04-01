@@ -1,0 +1,13 @@
+perf
+impf
+imp
+pos
+neg
+p1
+p2
+p3
+sg
+pl
+m
+f
+none
