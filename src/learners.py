@@ -477,7 +477,7 @@ if __name__ == '__main__':
 	testing =  "gabra-verbs-test.tar.bz2"
 	evalfile = "verbs.attention.txt"
 	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
-	labeldata = "labels-split.txt"
+	labeldata = "verb-labels-split.txt"
 	modelsdir = "../models/" + model_name
 	testword = 'ħriġniex'
 
