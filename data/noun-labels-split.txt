@@ -2,9 +2,11 @@ sg
 pl
 dl
 coll
+sp
 m
 f
+mf
 comparative
 superlative
 diminutive
-none
+default
