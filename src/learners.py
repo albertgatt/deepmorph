@@ -417,18 +417,18 @@ class MorphModel(object):
 		if self.__model is None:
 			raise RuntimeError('No model has been loaded or fitted')
 
-		label_prefix = np.array([ self.__label_edge_index ], 'int32')
+		label_prefix = [ self.__label_edge_index ]
 		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
 
 		for _ in range(self.max_word_length): #max length
-			probs = self.__model.predict([ encoded_word, label_prefix ])[0]
+			probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
 			selected_index = np.argmax(probs)
-
+        	
 			if selected_index == self.__label_edge_index:
 				break
-			
-			label_prefix = np.append(label_prefix, selected_index)
-		
+        	
+			label_prefix.append(selected_index)
+    
 		return [ self.__label_decoder[index] for index in label_prefix[1:] ]
 
 
@@ -470,29 +470,30 @@ def predict(m, teststring):
 
 
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-i100-pat2.nouns"
+	model_name = "attnRNN-adam-val10-i100-pat2.2"
 	data = "../data"
-	training = "gabra-noun-adj-train" #"gabra-verbs-train.tar.bz2"
-	testing =  "gabra-noun-adj-test.tar.bz2" #"gabra-verbs-test.tar.bz2"
-	evalfile = "noun-adj.attention.txt" #"verbs.attention.txt"
-	evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]#["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
-	labeldata = "noun-labels-split.txt" #"verb-labels-split.txt"
+	training = "gabra-verbs-train.tar.bz2"
+	testing =  "gabra-verbs-test.tar.bz2"
+	evalfile = "verbs_attnRNN-adam-val10-i100-pat2.2.txt"
+	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
+	#["WORD", "NUMBER", "GENDER", "FORM", "OVERALL"]
+	labeldata = "verb-labels-split.txt"
 	modelsdir = "../models/" + model_name
-	#testword = 'ħriġniex'
+	testword = 'noħroġ'
 
 	#initialise
 	m = MorphModel(model_name)
 	m.read_labels(os.path.join(data, labeldata))
-	#m.max_word_length = 18 #Have to set this...
+	m.max_word_length = 18 #Have to set this...
 
 	#train a new model and save to mdoel dir
-	train_new(m, modelsdir, data, training) 
+	#train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
-	#load(m, modelsdir, model_name)
+	load(m, modelsdir, model_name)
 	
 	#evaluate a model on test data 
 	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
 	#generate predictions for a string
-	#predict(m, testword)
+	predict(m, testword)
