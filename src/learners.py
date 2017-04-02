@@ -392,6 +392,7 @@ class MorphModel(object):
 				(word, labels) = line.strip().split('\t') 
 				labels = labels.split(' - ')	
 				predictions = self.generate(word)
+				print(word + "\t".join(predictions))
 
 				#1 or 0 per label, and 1 or 0 for the whole
 				accfunc = lambda tup: 1 if tup[0] == tup[1] else 0
@@ -418,7 +419,7 @@ class MorphModel(object):
 			raise RuntimeError('No model has been loaded or fitted')
 
 		label_prefix = np.array([ self.__label_edge_index ], 'int32')
-		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
+		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word.strip().lower() ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
 
 		for _ in range(self.max_word_length): #max length
 			probs = self.__model.predict([ encoded_word, label_prefix ])[0]
@@ -428,7 +429,7 @@ class MorphModel(object):
 				break
 			
 			label_prefix = np.append(label_prefix, selected_index)
-		
+
 		return [ self.__label_decoder[index] for index in label_prefix[1:] ]
 
 
@@ -478,21 +479,21 @@ if __name__ == '__main__':
 	evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]#["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
 	labeldata = "noun-labels-split.txt" #"verb-labels-split.txt"
 	modelsdir = "../models/" + model_name
-	#testword = 'ħriġniex'
+	testword = 'ħġejjeġ'
 
 	#initialise
 	m = MorphModel(model_name)
 	m.read_labels(os.path.join(data, labeldata))
-	#m.max_word_length = 18 #Have to set this...
+	m.max_word_length = 24 #Have to set this...
 
 	#train a new model and save to mdoel dir
-	train_new(m, modelsdir, data, training) 
+	#train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
-	#load(m, modelsdir, model_name)
+	load(m, modelsdir, model_name)
 	
 	#evaluate a model on test data 
 	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
 	#generate predictions for a string
-	#predict(m, testword)
+	predict(m, testword)
