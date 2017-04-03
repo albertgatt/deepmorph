@@ -369,6 +369,7 @@ class MorphModel(object):
 		total_correct = 0
 		total = 0
 		per_class = []
+		conf_matrix = np.zeros((len(self.__labels), len(self.__labels)), dtype='int32')
 
 		if testoutput == None:
 			output = lambda x:   sys.stdout.write("\t".join(map(str,x)) + "\n")
@@ -377,7 +378,7 @@ class MorphModel(object):
 			output = lambda x:   out.write("\t".join(map(str,x)) + "\n")
 
 		if header is not None:
-			output(header)
+			output(header + ["OVERALL"])
 
 		#check if file is zipped
 		if tarfile.is_tarfile(testdata):
@@ -385,10 +386,9 @@ class MorphModel(object):
 			testdata = self.__unzip_file(testdata)
 
 		with open(testdata, 'r', encoding='utf-8') as test:
-			lines = test.readlines()
-			total = len(lines)
 
-			for line in lines:
+			for line in test.readlines():
+				total += 1
 				(word, labels) = line.strip().split('\t') 
 				labels = labels.split(' - ')	
 				predictions = self.generate(word)
@@ -406,10 +406,19 @@ class MorphModel(object):
 	
 				output([word] + acc + [correct])
 
+				#update conf matrix
+				for (l,p) in list(zip(labels, predictions)):
+					i = self.__labels.index(l) #row in conf matrix = index of orignal label
+					j = self.__labels.index(p) #col
+					conf_matrix[i,j] += 1
+
 			print()
 			print('Accuracy: ' + str(total_correct) + ' ' + str(total_correct/total), flush=True)
 			print("Per-class: " + "\t".join(map(str,[x/total for x in per_class])), flush=True)
-
+			print()
+			print("Confusion matrix (row=actual, col=classified-as):")			
+			print(conf_matrix)
+		
 		self.__cleanup()
 
 	#test learned neural network
@@ -418,7 +427,7 @@ class MorphModel(object):
 			raise RuntimeError('No model has been loaded or fitted')
 
 		label_prefix = [ self.__label_edge_index ]
-		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
+		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word.strip().lower() ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
 
 		for _ in range(self.max_word_length): #max length
 			probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
@@ -444,6 +453,21 @@ class MorphModel(object):
 		
 		return attentions
 
+
+	def print_predictions(self, teststring):
+		print("Model predictions:")
+		print(self.generate(teststring))
+
+		print()
+
+		print("Attentions:")
+		attentions = self.get_attentions(testword)
+		print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
+
+		for (label, attention) in zip(self.labels, attentions):
+			print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ])) 
+
+
 def train_new(m, modelsdir, datadir, trainfile):
 	print("Training model")
 	callbacks = [EarlyStopping(monitor='val_loss', patience=2),
@@ -455,45 +479,36 @@ def train_new(m, modelsdir, datadir, trainfile):
 def load(m, modelsdir, model_name):
 	m.load(os.path.join(modelsdir, model_name))	
 	m.load_attn(os.path.join(modelsdir, model_name))
-
-def predict(m, teststring):
-	print("Model predictions:")
-	print(m.generate(teststring))
-
-	print()
-
-	print("Attentions:")
-	attentions = m.get_attentions(testword)
-	print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
-	for (label, attention) in zip(m.labels, attentions):
-	 	print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ])) 
-
+	
 
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-i100-pat2.2"
+	model_name = "attnRNN-adam-val10-i100-pat2.verbs.mood.form"#'attnRNN-adam-val10-i100-pat2.nouns' 
 	data = "../data"
-	training = "gabra-verbs-train.tar.bz2"
-	testing =  "gabra-verbs-test.tar.bz2"
-	evalfile = "verbs_attnRNN-adam-val10-i100-pat2.2.txt"
-	evalheader = ["WORD", "ASPECT", "POLARITY", "PERSON", "NUMBER", "GENDER", "OVERALL"]
-	#["WORD", "NUMBER", "GENDER", "FORM", "OVERALL"]
+	training = "gabra-verbs-mood-form-train.tar.bz2"
+	#testing =  'gabra-noun-adj-test.tar.bz2'
+	testing = "gabra-verbs-mood-form-test.tar.bz2"
+	#evalfile = 'nouns_attnRNN-adam-val10-i100-pat2' 
+	evalfile = "verbs_attnRNN-adam-val10-i100-pat2.mood.form.txt"
+	evalheader = ["WORD", "VFORM", "ASPECT", "MOOD", "POLARITY", "PERSON", "NUMBER", "GENDER"]
+	#evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]
+	#labeldata = 'noun-labels-split.txt' 
 	labeldata = "verb-labels-split.txt"
-	modelsdir = "../models/" + model_name
-	testword = 'noħroġ'
+	modelsdir = os.path.join("../models", model_name)
+	#testword = "ritjiet"
 
 	#initialise
 	m = MorphModel(model_name)
 	m.read_labels(os.path.join(data, labeldata))
-	m.max_word_length = 18 #Have to set this...
+	#m.max_word_length = 18 #Have to set this...
 
 	#train a new model and save to mdoel dir
-	#train_new(m, modelsdir, data, training) 
+	train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
-	load(m, modelsdir, model_name)
+	#load(m, modelsdir, model_name)
 	
 	#evaluate a model on test data 
-	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
+	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
 	#generate predictions for a string
-	predict(m, testword)
+	#m.print_predictions(testword)

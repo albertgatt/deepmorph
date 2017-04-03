@@ -11,7 +11,7 @@ other_file = '../data/nouns.txt'
 
 #
 vfeatures = ['aspect', 'polarity']
-vsub_features = ['person', 'number', 'gender', 'derived_form']
+vsub_features = ['person', 'number', 'gender']
 nsub_features = ['number', 'gender', 'form']
 
 def get_verb_features(v, o):
@@ -21,8 +21,10 @@ def get_verb_features(v, o):
 		for s in vsub_features:
 			if s in v[o]:
 				result += [v[o][s]]
+			elif s == 'gender':
+				result += ['mf']
 			else:
-				result += [None]
+				raise RuntimeError('Not found: ' + s)
 	else:
 		result += [None for x in vsub_features]
 
@@ -30,7 +32,7 @@ def get_verb_features(v, o):
 
 def get_noun_features(n):
 	result = []
-	mapping = {'sp':'none', 'mf': 'none', 'sgv': 'sg', 'verbalnoun': 'none', 'mimated': 'none', 'pl_ind': 'pl'}
+	mapping = {'sgv': 'sg', 'verbalnoun': 'none', 'mimated': 'none', 'pl_ind': 'pl'}
 	
 
 	for f in nsub_features:
@@ -63,6 +65,7 @@ def get_from_db(pos, data_file, gz_file):
 			lexid = ObjectId(lexeme['_id'])
 			lemma = lexeme['lemma']
 			root = None
+			vform = 'NF'
 			pos = lexeme['pos']
 
 			if 'root' in lexeme and lexeme['root'] is not None:
@@ -71,6 +74,8 @@ def get_from_db(pos, data_file, gz_file):
 				except KeyError:
 					root = None
 
+			if 'derived_form' in lexeme:				
+				vform = lexeme['derived_form']
 
 			for wf in db.wordforms.find({'lexeme_id': lexid, 'pending': {"$ne": True}}):
 				i+=1
@@ -78,28 +83,35 @@ def get_from_db(pos, data_file, gz_file):
 				if i % 1000 == 0:
 					print(i)
 
-				sf = wf['surface_form']
+				sf = wf['surface_form'].strip().lower()
 
-				#some words are multi-word expressions -- exclude
-				if len(sf.split()) > 1:
+				#exclude non-words, words with a hyphen or multiword expressions
+				if len(sf) < 1 or '-' in sf or len(sf.split()) > 1:
 					continue
 				
-				wf_features = [sf] #[lemma, root, sf] #initial feature vector
+				wf_features = [] #[lemma, root, sf] #initial feature vector
 					
 				if pos == 'VERB':
-					#print(sf)
+					#map 'imperative to a mood, not aspect'
 					try:
-						wf_features += [wf['aspect'], wf['polarity']]
+						mood = 'ind'							
+						aspect = wf['aspect']
+
+						if aspect == 'imp':
+							mood = 'imp'
+							aspect = 'impf'						
+
+						wf_features += [vform, aspect, mood, wf['polarity']]
 						wf_features += get_verb_features(wf, 'subject')
 						#wf_features += get_verb_features(wf, 'dir_obj')
 						#wf_features += get_verb_features(wf, 'ind_obj')
-						data.write('\t'.join([str(x) for x in wf_features]) + "\n")
+						data.write(sf + "\t" + ' - '.join([str(x) for x in wf_features]) + "\n")
 					except: #skip anything that doesn't have the expected features
 						continue
 				else:
 					try:						
 						wf_features += get_noun_features(wf)
-						data.write('\t'.join([str(x) for x in wf_features]) + "\n")					
+						data.write(sf + '\t' + ' - '.join([str(x) for x in wf_features]) + "\n")					
 
 					except: #skip anything that doesn't have the expected features
 						continue
@@ -113,7 +125,7 @@ def reformat(line):
 	return result
 
 
-def split(f, train, test, t=90):
+def split(f, train, test, t=90, reformat=False):
 	with open(f, 'r', encoding="utf-8") as data:
 		cases = data.readlines()
 		random.shuffle(cases)
@@ -121,18 +133,26 @@ def split(f, train, test, t=90):
 		perc = int(0.9*len(cases))
 
 		with open(train, 'w', encoding="utf-8") as training:
-			training.writelines(map(reformat, cases[0:perc]))
+			if reformat:
+				training.writelines(map(reformat, cases[0:perc]))
+			else:
+				training.writelines(cases[0:perc])
+
 			compress_file(train + ".tar.bz2", train)
 
 		with open(test, 'w', encoding="utf-8") as testing:
-			testing.writelines(map(reformat, cases[perc:]))
+			if reformat:
+				testing.writelines(map(reformat, cases[perc:]))
+			else:
+				testing.writelines(cases[perc:])
+				
 			compress_file(test + ".tar.bz2", test)
 
 
 if __name__ == "__main__":
-	#get_from_db(['VERB'], '../data/verbs.txt', '../data/gabra-verbs-all')
+	get_from_db(['VERB'], 'verbs-mood-form-all.txt', 'gabra-verbs-mood-form-all')
 	#get_from_db(['NOUN', 'ADJ'], 'noun-adj.txt', 'gabra-noun-adj-all')
-	#split('../data/verbs.txt', '../data/verbs-train.txt', '../data/verbs-test.txt')
-	split('noun-adj.txt', 'gabra-noun-adj-train', 'gabra-noun-adj-test')
+	split('verbs-mood-form-all.txt', 'gabra-verbs-mood-form-train.txt', 'gabra-verbs-mood-form-test.txt')
+	#split('noun-adj.txt', 'gabra-noun-adj-train', 'gabra-noun-adj-test')
 
 		
