@@ -138,7 +138,7 @@ def split(f, train, test, t=90, reformat=False):
 			else:
 				training.writelines(cases[0:perc])
 
-			compress_file(train + ".tar.bz2", train)
+			compress_file(train, train)
 
 		with open(test, 'w', encoding="utf-8") as testing:
 			if reformat:
@@ -146,11 +146,11 @@ def split(f, train, test, t=90, reformat=False):
 			else:
 				testing.writelines(cases[perc:])
 				
-			compress_file(test + ".tar.bz2", test)
+			compress_file(test, test)
 
 
 if __name__ == "__main__":
-	get_from_db(['VERB'], 'verbs-mood-form-all.txt', 'gabra-verbs-mood-form-all')
+	#get_from_db(['VERB'], 'verbs-mood-form-all.txt', 'gabra-verbs-mood-form-all')
 	#get_from_db(['NOUN', 'ADJ'], 'noun-adj.txt', 'gabra-noun-adj-all')
 	split('verbs-mood-form-all.txt', 'gabra-verbs-mood-form-train.txt', 'gabra-verbs-mood-form-test.txt')
 	#split('noun-adj.txt', 'gabra-noun-adj-train', 'gabra-noun-adj-test')

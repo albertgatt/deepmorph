@@ -422,7 +422,7 @@ class MorphModel(object):
 		self.__cleanup()
 
 	#test learned neural network
-	def generate(self, word):	      
+	def generate(self, word, nbest=1):	      
 		if self.__model is None:
 			raise RuntimeError('No model has been loaded or fitted')
 
@@ -432,12 +432,12 @@ class MorphModel(object):
 		for _ in range(self.max_word_length): #max length
 			probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
 			selected_index = np.argmax(probs)
-        	
+
 			if selected_index == self.__label_edge_index:
 				break
         	
 			label_prefix.append(selected_index)
-    
+    	
 		return [ self.__label_decoder[index] for index in label_prefix[1:] ]
 
 
@@ -454,9 +454,9 @@ class MorphModel(object):
 		return attentions
 
 
-	def print_predictions(self, teststring):
+	def print_predictions(self, teststring, nbest=1):
 		print("Model predictions:")
-		print(self.generate(teststring))
+		print(self.generate(teststring, nbest))
 
 		print()
 
@@ -494,21 +494,21 @@ if __name__ == '__main__':
 	#labeldata = 'noun-labels-split.txt' 
 	labeldata = "verb-labels-split.txt"
 	modelsdir = os.path.join("../models", model_name)
-	#testword = "ritjiet"
+	testword = "startjat"
 
 	#initialise
 	m = MorphModel(model_name)
 	m.read_labels(os.path.join(data, labeldata))
-	#m.max_word_length = 18 #Have to set this...
+	m.max_word_length = 18 #Have to set this...
 
 	#train a new model and save to mdoel dir
-	train_new(m, modelsdir, data, training) 
+	#train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
-	#load(m, modelsdir, model_name)
+	load(m, modelsdir, model_name)
 	
 	#evaluate a model on test data 
-	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
+	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
 	#generate predictions for a string
-	#m.print_predictions(testword)
+	m.print_predictions(testword)
