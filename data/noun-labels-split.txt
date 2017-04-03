@@ -7,6 +7,5 @@ m
 f
 mf
 comparative
-superlative
 diminutive
 default

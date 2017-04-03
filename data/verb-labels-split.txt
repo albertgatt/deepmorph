@@ -1,5 +1,6 @@
 perf
 impf
+ind
 imp
 pos
 neg
@@ -10,4 +11,14 @@ sg
 pl
 m
 f
-none
+mf
+1
+2
+3
+5
+6
+7
+8
+9
+10
+NF
