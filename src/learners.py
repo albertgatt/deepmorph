@@ -378,7 +378,7 @@ class MorphModel(object):
 			any_removals = False
 
 			while True:
-			 	#(best_prob, best_complete, best_prefix, best_labels) = sorted_beam[-1]
+				#(best_prob, best_complete, best_prefix, best_labels) = sorted_beam[-1]
 				(best_prob, best_complete, best_prefix, best_labels) = curr_beam.get_best()[0]
 				
 				if best_complete or len(best_prefix)-1 == clip_len:
@@ -436,6 +436,11 @@ class MorphModel(object):
 
 def train_new(m, modelsdir, datadir, trainfile):
 	print("Training model")
+
+	if not os.path.exists(modelsdir):
+		print("Creating model directory: " + modelsdir)
+		os.makedirs(modelsdir)
+
 	callbacks = [EarlyStopping(monitor='val_loss', patience=2),
 				 ModelCheckpoint('attnRNN.{epoch:02d}-{val_loss:.2f}.hdf5', monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1)]
 	m.train_attention(os.path.join(datadir,trainfile), 100, modelsdir, callback=callbacks)
@@ -443,11 +448,11 @@ def train_new(m, modelsdir, datadir, trainfile):
 
 
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-i100-pat2.verbs.mood.form"#'attnRNN-adam-val10-i100-pat2.nouns' 
+	model_name = "attnRNN-adam-val10-i100-pat2.verbs.mood.form.2"#'attnRNN-adam-val10-i100-pat2.nouns' 
 	data = "../data"
-	training = "gabra-verbs-mood-form-train.tar.bz2"
+	training = "gabra-verbs-mood-form-train.2.tar.bz2"
 	#testing =  'gabra-noun-adj-test.tar.bz2'
-	testing = "gabra-verbs-mood-form-test.tar.bz2"
+	testing = "gabra-verbs-mood-form-test.2.tar.bz2"
 	#evalfile = 'nouns_attnRNN-adam-val10-i100-pat2' 
 	evalfile = "verbs_attnRNN-adam-val10-i100-pat2.mood.form.txt"
 	evalheader = ["WORD", "VFORM", "ASPECT", "MOOD", "POLARITY", "PERSON", "NUMBER", "GENDER"]
@@ -463,10 +468,10 @@ if __name__ == '__main__':
 	m.max_word_length = 18 #Have to set this...
 
 	#train a new model and save to mdoel dir
-	#train_new(m, modelsdir, data, training) 
+	train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
-	m.load(os.path.join(modelsdir, model_name))	
+	#m.load(os.path.join(modelsdir, model_name))	
 	
 	#evaluate a model on test data 
 	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
