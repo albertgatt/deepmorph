@@ -8,10 +8,12 @@ from keras.models import *
 from keras.optimizers import *
 from keras.preprocessing.sequence import *
 from keras.callbacks import ModelCheckpoint, EarlyStopping
+from utils import Beam
 import numpy as np
 import os
 import tarfile
 import json
+import math, heapq
 
 class MorphModel(object):
 
@@ -101,7 +103,6 @@ class MorphModel(object):
 		self.__label_encoder    = { label: i+2 for (i, label) in enumerate(self.__labels) }
 		self.__label_decoder    = { i+2: label for (i, label) in enumerate(self.__labels) }		
 
-
 	def __check(self):
 		return len(self.__labels) != 0
 
@@ -163,80 +164,6 @@ class MorphModel(object):
 			os.rmdir('./tmp')
 
 
-	def train(self, training, epochs, save_dir = ".", callback = [], save = SAVE_MODEL_HISTORY):
-		"""Train a simple RNN model. Unless otherwise set, this will train with a validation split of 10%. 
-
-		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
-		:param epochs: Number of training epochs
-		:param savedir: Path to destination directory for model files. If unspecified, saves to current directory.
-		:param callbacks: Callbacks to pass to the model.fit funciton in Keras. If None or empty (the default), no callbacks are passed.
-		:param save: Control how model is saved.
-		:type training: string
-		:type epochs: int
-		:type save_dir: string
-		:type callbacks: list
-		:type save: int
-		"""
-
-		#first, check that we have labels etc
-		if not self.__check():
-			raise RuntimeError('Labels and characters are not set')
-
-
-		#check if file is zipped
-		if tarfile.is_tarfile(training):
-			print("Training data is zipped -- unpacking to tmp directory", flush=True)
-			training = self.__unzip_file(training)
-
-		(trainingset_word, trainingset_label_prefix, trainingset_label_target) = self.__setup(training)
-
-		#define architecture
-		# input --> embedding
-		input_word             = Input(shape=(None,), dtype='int32')
-		embedded_chars         = Embedding(input_dim=self.__chars_size, 
-											output_dim=32, mask_zero=True)(input_word)
-		embedded_chars_dropout = Dropout(0.5)(embedded_chars)
-		encoded_word           = SimpleRNN(32)(embedded_chars_dropout)
-
-		input_label_prefix      = Input(shape=(None,), dtype='int32')
-		embedded_labels         = Embedding(input_dim=self.labels_size, 
-											output_dim=32, mask_zero=True)(input_label_prefix)
-		embedded_labels_dropout = Dropout(0.5)(embedded_labels)
-		encoded_label_prefix    = SimpleRNN(32)(embedded_labels_dropout)
-
-		merged_data         = merge([encoded_word, encoded_label_prefix], mode='concat', concat_axis=1)
-		merged_data_dropout = Dropout(0.5)(merged_data)
-		distribution        = Dense(self.labels_size, activation='softmax')(merged_data_dropout)
-
-		self.__model = Model(input=[input_word, input_label_prefix], output=distribution)
-
-		# #define learning method
-		self.__model.compile(optimizer=self.optimiser, loss=self.loss_function)
-
-		#train
-		#if save == MorphModel.SAVE:
-			#save_callback = ModelCheckpoint(os.path.join(save_dir, self.name) + ".{epoch:02d}-{loss:.2f}.hdf5")
-			#history = self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=epochs, callbacks=[save_callback])
-
-		#else:
-		if callback is None: callbacks = [] #In case some smartass passes a None
-
-		self.__hist = self.__model.fit([trainingset_word, 
-										trainingset_label_prefix], 
-										trainingset_label_target, 
-										validation_split=self.validation_split, 
-										batch_size=self.batch_size, nb_epoch=epochs, callbacks=callback)
-		
-		self.save_model(save_dir)
-
-		if save == MorphModel.SAVE_MODEL_HISTORY:
-			self.save_history(save_dir)		
-
-		##clean up if we need to
-		self.__cleanup()
-
-
-
 	def train_attention(self, training, epochs, save_dir = ".", callback=[], save = SAVE_MODEL_HISTORY):
 		"""Train a model with an attention mechanism.
 
@@ -291,14 +218,7 @@ class MorphModel(object):
 		#define learning method
 		self.__model.compile(optimizer=self.optimiser, loss=self.loss_function)
 		#self.__attn.compile(optimizer=Adam(), loss='categorical_crossentropy')
-		
-		#train, either saving per epoch or not
-		# if save == MorphModel.SAVE_PER_EPOCH:
-		# 	save_callback = ModelCheckpoint(os.path.join(save_dir, self.name) + ".{epoch:02d}-{loss:.2f}.hdf5")
-		# 	hisory = self.__model.fit([trainingset_word, trainingset_label_prefix], trainingset_label_target, batch_size=10, nb_epoch=epochs, callbacks=[save_callback])
-		# 	self.save_attention(save_dir)
-		# 	self.save(save_dir)
-		# else:
+				
 		if callback is None: callbacks = [] #In case some smartass passes a None
 
 		self.__hist = self.__model.fit([trainingset_word, 
@@ -307,54 +227,31 @@ class MorphModel(object):
 										validation_split=self.validation_split, 
 										batch_size=self.batch_size, epochs=epochs, callbacks=callback, verbose=2)
 
-		self.save_model(save_dir)
-		self.save_attention(save_dir)
-
-		if save == MorphModel.SAVE_MODEL_HISTORY:
-			self.save_history(save_dir)
+		#save model
+		self.__save(save_dir, save)
 
 		##clean up if we have to
 		self.__cleanup()
 
-	def save_history(self, dirpath):
-		if self.__hist is None:
-			return False
 
-		filename = self.name + ".hist.json"
 
-		with open(os.path.join(dirpath, filename), 'w', encoding='utf-8') as histfile:
-			histfile.write(json.dumps(self.__hist.history, sort_keys=True))	
+	def save(self, dirpath, save = SAVE_MODEL_HISTORY):
 
-		return True
+		if self.__hist is not None and save == SAVE_MODEL_HISTORY:
+			hist = self.name + ".hist.json"
 
-	def save_attention(self, dirpath):
+			with open(os.path.join(dirpath, hist), 'w', encoding='utf-8') as histfile:
+				histfile.write(json.dumps(self.__hist.history, sort_keys=True))	
+
 		if self.__attn is not None:
 			self.__attn.save(os.path.join(dirpath, self.name + ".attn"))
-			return True
-		return False
-
-	def save_model(self, dirpath):
-		"""Save the model and attentions (if any). 
-		The model is saved in a file with the name specified in the constructor.
-
-		:param dirpath: Directory path
-		:type dispath: string
-		:return: True if there is a precompiled model which can be saved
-		"""
-		#self.save_attention(dirpath)
 		
 		if self.__model is not None:
 			self.__model.save(os.path.join(dirpath, self.name + ".hdf5"))
-			return True
-		
-		return False
-
+			
 
 	def load(self, filepath):
 		self.__model = load_model(filepath + ".hdf5")
-
-
-	def load_attn(self, filepath):
 		self.__attn = load_model(filepath + ".attn")
 
 	def evaluate(self, testdata, header=None, testoutput=None):
@@ -421,30 +318,92 @@ class MorphModel(object):
 		
 		self.__cleanup()
 
+
+	def __encode_string(self, word):
+		return pad_sequences([[ self.__char_encoder[ch] for ch in word.strip().lower() ]], 
+			maxlen=self.max_word_length, value=self.__char_pad_index)		
+
 	#test learned neural network
-	def generate(self, word, nbest=1):	      
+	def generate(self, word):	      
 		if self.__model is None:
 			raise RuntimeError('No model has been loaded or fitted')
 
 		label_prefix = [ self.__label_edge_index ]
-		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word.strip().lower() ]], maxlen=self.__max_word_length, value=self.__char_pad_index)
+		labels = []
+		encoded_word = self.__encode_string(word)
 
 		for _ in range(self.max_word_length): #max length
-			probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
-			selected_index = np.argmax(probs)
+			#probs = self.__model.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
+			#selected_index = np.argmax(probs)		
+			(p, selected_index, label) = self.__distribution(encoded_word, label_prefix)[0]
 
 			if selected_index == self.__label_edge_index:
 				break
-        	
+			
 			label_prefix.append(selected_index)
-    	
-		return [ self.__label_decoder[index] for index in label_prefix[1:] ]
+			#labels.append(self.__label_decoder[selected_index])
+			labels.append(label)
+		return labels
 
 
+	def __distribution(self, encoded_word, prefix, log=True):
+		probabilities = self.__model.predict([ encoded_word, np.array( [ prefix ], 'int32' ) ])[0]
+		p = lambda x: math.log(probabilities[x]) if log else probabilities[x]
+		distribution = [ ( p(i), i, self.__label_decoder[i] ) for i in range(2, len(probabilities)) ]
+		distribution.append( ( p(self.__label_edge_index), self.__label_edge_index, '<end>' ) )
+		return sorted(distribution, reverse=True)
+
+
+	def beam_search(self, teststring, beam_width=5, clip_len=7, end_token='<end>', start_token='<start>'):		
+		encoded_word = self.__encode_string(teststring)
+		beam = Beam(beam_width)
+		beam.add( (0.0, False, [ self.__label_edge_index ], [ start_token ] ) ) #initialise the beam
+
+		while True:
+			curr_beam = Beam(beam_width)
+
+			for (logprob, complete, prefix, labels) in beam:
+				#print(labels)
+				if complete == True:
+					curr_beam.add( ( logprob, True, prefix, labels ) ) 
+				
+				else:					
+					for ( next_prob, i, next_word ) in self.__distribution( encoded_word, prefix ):
+						if next_word == end_token: 
+							curr_beam.add( ( logprob+next_prob, True, prefix, labels ) )
+						else: 
+							curr_beam.add( ( logprob+next_prob, False, prefix+[i], labels+[next_word] ) )
+			
+			#sorted_beam = sorted(curr_beam)
+			any_removals = False
+
+			while True:
+			 	#(best_prob, best_complete, best_prefix, best_labels) = sorted_beam[-1]
+				(best_prob, best_complete, best_prefix, best_labels) = curr_beam.get_best()[0]
+				
+				if best_complete or len(best_prefix)-1 == clip_len:
+					yield( best_labels[1:], math.exp(best_prob) )
+					curr_beam.remove( ( best_prob, best_complete, best_prefix, best_labels ) )
+					any_removals = True
+
+					if curr_beam.is_empty():
+						break
+				else:
+					break
+
+			if any_removals:
+				if curr_beam.is_empty():
+					break;
+				else:
+					beam = Beam(beam_width, curr_beam)
+			else:
+				beam = curr_beam
+	
+	
 	def get_attentions(self, word):
 		attentions = list()
 		label_prefix = [ self.__label_edge_index ]
-		encoded_word = pad_sequences([[ self.__char_encoder[ch] for ch in word ]], maxlen=self.max_word_length, value=self.__char_pad_index)
+		encoded_word = self.__encode_string(word)
 		
 		for label in self.labels:
 			attention = self.__attn.predict([ encoded_word, np.array([ label_prefix ], 'int32') ])[0]
@@ -454,18 +413,25 @@ class MorphModel(object):
 		return attentions
 
 
-	def print_predictions(self, teststring, nbest=1):
-		print("Model predictions:")
-		print(self.generate(teststring, nbest))
+	def print_predictions(self, teststring, beam=1, clip_len=-1, att=False):
+		print("Model predictions for: " + teststring)
 
-		print()
+		if beam <= 1:
+			print(self.generate(teststring))
+		else:			
+			for (labels, prob) in list(self.beam_search(teststring, beam, clip_len)):
+				print((labels, prob))
 
-		print("Attentions:")
-		attentions = self.get_attentions(testword)
-		print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
+		if(att):
+			print()
+			print("Attentions:")
+			attentions = self.get_attentions(testword)
+			print(' '*12, ' ', *[ (' '*6)+ch for ch in '/'*(m.max_word_length-len(testword))+testword ], sep='')
 
-		for (label, attention) in zip(self.labels, attentions):
-			print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ])) 
+			for (label, attention) in zip(self.labels, attentions):
+				print('{:<12}:'.format(label), ' '.join([ '{:>6.3f}'.format(a) for a in attention ])) 
+
+#End class
 
 
 def train_new(m, modelsdir, datadir, trainfile):
@@ -475,11 +441,6 @@ def train_new(m, modelsdir, datadir, trainfile):
 	m.train_attention(os.path.join(datadir,trainfile), 100, modelsdir, callback=callbacks)
 	print("Max word length: " + str(m.max_word_length))
 
-
-def load(m, modelsdir, model_name):
-	m.load(os.path.join(modelsdir, model_name))	
-	m.load_attn(os.path.join(modelsdir, model_name))
-	
 
 if __name__ == '__main__':
 	model_name = "attnRNN-adam-val10-i100-pat2.verbs.mood.form"#'attnRNN-adam-val10-i100-pat2.nouns' 
@@ -494,7 +455,7 @@ if __name__ == '__main__':
 	#labeldata = 'noun-labels-split.txt' 
 	labeldata = "verb-labels-split.txt"
 	modelsdir = os.path.join("../models", model_name)
-	testword = "startjat"
+	testword = "kkastrajna"
 
 	#initialise
 	m = MorphModel(model_name)
@@ -505,10 +466,13 @@ if __name__ == '__main__':
 	#train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
-	load(m, modelsdir, model_name)
+	m.load(os.path.join(modelsdir, model_name))	
 	
 	#evaluate a model on test data 
 	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
 	#generate predictions for a string
-	m.print_predictions(testword)
+	m.print_predictions(testword, beam=7, clip_len=7)
+
+
+
