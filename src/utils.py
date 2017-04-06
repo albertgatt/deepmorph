@@ -1,4 +1,6 @@
 import heapq 
+import tarfile
+import os
 
 class Beam(object):
 
@@ -41,13 +43,53 @@ class Beam(object):
 		self.heap.remove(to_remove)
 		heapq.heapify(self.heap)
 
-if __name__ == '__main__':
-	b = Beam(2)
-	b.add((0.4, True, [], []))
-	b.add((0.1, False, [], []))
-	b.add((0.6, True, [], []))
 
-	best = b.get_best()[0]
-	print(best)
-	b.remove(best)
-	print(b.heap)
+
+class DataFileHandler(object):
+
+	def __init__(self, filename):
+		self.filename = filename
+		self.tmp = 'tmp/'
+		self.counter = 0
+
+	def zipped(self):
+		return tarfile.is_tarfile(self.filename)
+
+	def unzip_file(self):
+		"""Utiility method to unzip a file
+		"""
+		tar = tarfile.open(name=self.filename)
+		filename = tar.getnames()[0]
+
+		if not os.path.isdir(self.tmp):
+			os.mkdir(self.tmp)
+	
+		tar.extractall(path=self.tmp)
+		return os.path.join(self.tmp, filename)
+
+	def read(self):
+		if self.zipped():
+			print("File is zipped - unzipping to tmp directory")
+			readfile = self.unzip_file()
+		else:
+			readfile = self.filename
+
+		with open(readfile, 'r', encoding='utf8') as reader:
+			for line in reader.readlines():
+				(word, labels) = line.strip().split('\t') 
+				labels = labels.split(' - ')	
+				self.counter += 1
+				yield(word, labels)
+
+	def cleanup(self):
+		if self.zipped():
+			for root, dirs, files in os.walk(self.tmp, topdown=False):
+				for name in files:
+					os.remove(os.path.join(root, name))
+				for name in dirs:
+					os.rmdir(os.path.join(root, name))
+			os.rmdir(self.tmp)
+
+
+
+

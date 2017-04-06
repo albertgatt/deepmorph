@@ -9,6 +9,7 @@ from keras.optimizers import *
 from keras.preprocessing.sequence import *
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from utils import Beam
+from evaluate import ModelEvaluator
 import numpy as np
 import os
 import tarfile
@@ -16,12 +17,6 @@ import json
 import math, heapq
 
 class MorphModel(object):
-
-	#Constants to control how to save
-	SAVE_PER_EPOCH = 2 #don't use yet
-	SAVE_MODEL_HISTORY = 2 #save both model and history
-	SAVE_MODEL = 1 #save model only
-
 
 	def __init__(self, name):
 		"""Initialise a container object for a keras/theano model.
@@ -164,7 +159,7 @@ class MorphModel(object):
 			os.rmdir('./tmp')
 
 
-	def train_attention(self, training, epochs, save_dir = ".", callback=[], save = SAVE_MODEL_HISTORY):
+	def train_attention(self, training, epochs, save_dir = ".", callback=[]):
 		"""Train a model with an attention mechanism.
 
 		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
@@ -228,16 +223,16 @@ class MorphModel(object):
 										batch_size=self.batch_size, epochs=epochs, callbacks=callback, verbose=2)
 
 		#save model
-		self.__save(save_dir, save)
+		self.save(save_dir)
 
 		##clean up if we have to
 		self.__cleanup()
 
 
 
-	def save(self, dirpath, save = SAVE_MODEL_HISTORY):
+	def save(self, dirpath):
 
-		if self.__hist is not None and save == SAVE_MODEL_HISTORY:
+		if self.__hist is not None:
 			hist = self.name + ".hist.json"
 
 			with open(os.path.join(dirpath, hist), 'w', encoding='utf-8') as histfile:
@@ -254,70 +249,9 @@ class MorphModel(object):
 		self.__model = load_model(filepath + ".hdf5")
 		self.__attn = load_model(filepath + ".attn")
 
-	def evaluate(self, testdata, header=None, testoutput=None):
-		'''EValuate the model against some test data.
-		:param testdata: file path to the test data file (text or tar archive)
-		:param testoutput: file path to an output file to write results. If None, write to stdout
-		:param header: list of items to include in the header of the eval file. If None, no header is written
-		:type testdata: string
-		:type header: list
-		:type testoutput: string
-		'''
-		total_correct = 0
-		total = 0
-		per_class = []
-		conf_matrix = np.zeros((len(self.__labels), len(self.__labels)), dtype='int32')
-
-		if testoutput == None:
-			output = lambda x:   sys.stdout.write("\t".join(map(str,x)) + "\n")
-		else:
-			out = open(testoutput, 'w', encoding='utf-8')
-			output = lambda x:   out.write("\t".join(map(str,x)) + "\n")
-
-		if header is not None:
-			output(header + ["OVERALL"])
-
-		#check if file is zipped
-		if tarfile.is_tarfile(testdata):
-			print("Test data is zipped -- unpacking to tmp directory", flush=True)
-			testdata = self.__unzip_file(testdata)
-
-		with open(testdata, 'r', encoding='utf-8') as test:
-
-			for line in test.readlines():
-				total += 1
-				(word, labels) = line.strip().split('\t') 
-				labels = labels.split(' - ')	
-				predictions = self.generate(word)
-
-				#1 or 0 per label, and 1 or 0 for the whole
-				accfunc = lambda tup: 1 if tup[0] == tup[1] else 0
-				correct = accfunc((labels, predictions))
-				total_correct += correct
-				acc = list(map(accfunc, zip(labels, predictions)))
-	
-				if len(per_class) == 0:
-					per_class = acc
-				else:
-					per_class = [x + y for (x,y) in zip(per_class, acc)]
-	
-				output([word] + acc + [correct])
-
-				#update conf matrix
-				for (l,p) in list(zip(labels, predictions)):
-					i = self.__labels.index(l) #row in conf matrix = index of orignal label
-					j = self.__labels.index(p) #col
-					conf_matrix[i,j] += 1
-
-			print()
-			print('Accuracy: ' + str(total_correct) + ' ' + str(total_correct/total), flush=True)
-			print("Per-class: " + "\t".join(map(str,[x/total for x in per_class])), flush=True)
-			print()
-			print("Confusion matrix (row=actual, col=classified-as):")			
-			print(conf_matrix)
-		
-		self.__cleanup()
-
+	def evaluate(self, testdata, header=None, testoutput=None, beam=1):
+		evaluator = ModelEvaluator(self, testdata, testoutputfile=testoutput, classes=header)
+		evaluator.evaluate(beam_size = beam)
 
 	def __encode_string(self, word):
 		return pad_sequences([[ self.__char_encoder[ch] for ch in word.strip().lower() ]], 
@@ -455,7 +389,7 @@ if __name__ == '__main__':
 	testing = "gabra-verbs-mood-form-test.2.tar.bz2"
 	#evalfile = 'nouns_attnRNN-adam-val10-i100-pat2' 
 	evalfile = "verbs_attnRNN-adam-val10-i100-pat2.mood.form.txt"
-	evalheader = ["WORD", "VFORM", "ASPECT", "MOOD", "POLARITY", "PERSON", "NUMBER", "GENDER"]
+	evalheader = ["VFORM", "ASPECT", "MOOD", "POLARITY", "PERSON", "NUMBER", "GENDER"]
 	#evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]
 	#labeldata = 'noun-labels-split.txt' 
 	labeldata = "verb-labels-split.txt"
@@ -468,16 +402,16 @@ if __name__ == '__main__':
 	m.max_word_length = 18 #Have to set this...
 
 	#train a new model and save to mdoel dir
-	train_new(m, modelsdir, data, training) 
+	#train_new(m, modelsdir, data, training) 
 
 	#load a pretrained model
-	#m.load(os.path.join(modelsdir, model_name))	
+	m.load(os.path.join(modelsdir, model_name))	
 	
 	#evaluate a model on test data 
-	#m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
+	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
 	
 	#generate predictions for a string
-	m.print_predictions(testword, beam=7, clip_len=7)
+	#m.print_predictions(testword, beam=7, clip_len=7)
 
 
 
