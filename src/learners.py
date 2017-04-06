@@ -382,17 +382,17 @@ def train_new(m, modelsdir, datadir, trainfile):
 
 
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-i100-pat2.verbs.mood.form.2"#'attnRNN-adam-val10-i100-pat2.nouns' 
+	model_name = "attnRNN-adam-val10-i100-pat2.verbs.mood.form"#'attnRNN-adam-val10-i100-pat2.nouns' 
 	data = "../data"
-	training = "gabra-verbs-mood-form-train.2.tar.bz2"
+	training = "gabra-verbs-mood-form-train.tar.bz2"
 	#testing =  'gabra-noun-adj-test.tar.bz2'
-	testing = "gabra-verbs-mood-form-test.2.tar.bz2"
+	testing = "gabra-verbs-mood-form-test.tar.bz2"
 	#evalfile = 'nouns_attnRNN-adam-val10-i100-pat2' 
 	evalfile = "verbs_attnRNN-adam-val10-i100-pat2.mood.form.txt"
 	evalheader = ["VFORM", "ASPECT", "MOOD", "POLARITY", "PERSON", "NUMBER", "GENDER"]
 	#evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]
 	#labeldata = 'noun-labels-split.txt' 
-	labeldata = "verb-labels-split.txt"
+	labeldata = "verb-labels-simpleforms.txt"
 	modelsdir = os.path.join("../models", model_name)
 	testword = "kkastrajna"
 
@@ -408,10 +408,10 @@ if __name__ == '__main__':
 	m.load(os.path.join(modelsdir, model_name))	
 	
 	#evaluate a model on test data 
-	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile))
+	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile), beam=1)
 	
 	#generate predictions for a string
-	#m.print_predictions(testword, beam=7, clip_len=7)
+	m.print_predictions(testword, beam=7, clip_len=7)
 
 
 

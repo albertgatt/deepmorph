@@ -52,11 +52,13 @@ class ModelEvaluator(object):
 		totals = dict( [ (i+1, 0) for i in range(beam_size) ] )
 
 		for (word, labels) in testdata.read():			
-			
+			predictions = []
+
 			if beam_size == 1:
 				predictions = [self.__model.generate(word)] #With only 1-best, generate as it's faster
 			else:
 				predictons =list(self.__model.beam_search(word, beam_width=beam_size))
+				print(predictions)
 
 			i = 1#counter over predictions
 
