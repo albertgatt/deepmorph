@@ -15,20 +15,20 @@ import os
 import tarfile
 import json
 import math, heapq
+import configparser
 
 class MorphModel(object):
 
-	def __init__(self, name):
+	def __init__(self, parameters):
 		"""Initialise a container object for a keras/theano model.
-		:param name: A name for the model (this is used in the filenaming convention for saving the model)
-		:type name: string
+		:param parameters: A dictionary of parameters
+		:type name: dict
 		"""		
-		self.name = name
+		self.parameters = parameters
 		self.__label_pad_index = 0
 		self.__label_edge_index = 1
 		self.__char_pad_index = 0
-		self.__max_word_length = 10
-		self.labels = []
+		
 		self.__char_encoder = {}
 		self.__char_decoder = {}
 		self.__chars_size = 0
@@ -38,15 +38,29 @@ class MorphModel(object):
 		self.__attn = None
 		self.__hist = None
 		self.__tar = False #flag if we've used a tarfile
-		self.optimiser = Adam() #Default optimiser
-		self.validation_split = 0.1
-		self.batch_size = 10
-		self.loss_function = "categorical_crossentropy"
+		
+		self.name = parameters['name']
+		self.validation_split = float(parameters['valsplit'])
+		self.batch_size = int(parameters['batchsize'])
+		self.loss_function = parameters['lossfunction']
+		
+		self.max_word_length = int(parameters['maxwordlength'])
+		self.epochs = int(parameters['epochs'])
+		self.clip_len = int(parameters['cliplength'])
+		self.beam_width = int(parameters['beamsize'])
 
-		#characters initially set by default (but can reset)
-		#NB: Include the apostrophe (')
-		self.chars = "abċdefġgħhijklmnopqrstuvwxżz'-àèùcìy"	
+		self.labels = []
+		self.read_labels(parameters['labels'])
+		self.chars = self.chars = parameters['alphabet']
+		self.attributes = parameters['attributes'].split(",")
 
+		if 'patience' in parameters:
+			self.patience = int(parameters['patience'])
+		else:
+			self.patience = None
+
+		#@TODO: Read from config file
+		self.optimiser = Adam()
 
 	@property
 	def chars(self):
@@ -159,19 +173,13 @@ class MorphModel(object):
 			os.rmdir('./tmp')
 
 
-	def train_attention(self, training, epochs, save_dir = ".", callback=[]):
+	def train(self, training, save_dir = "."):
 		"""Train a model with an attention mechanism.
 
 		:param training: Path to the training data file. A utf-8 encoded text file or a tar.gz|bz2 archive
-		:param epochs: Number of epochs to use
-		:param save_dir: Path to destination directory for model files. If unspecified, saves to current directory.
-		:param callback: Callbacks to include in the model fitting. If None or empty (the default), no callbacks are used.
-		:param save: Control how model is saved.
+		:param save_dir: Path to destination directory for model files. If unspecified, saves to current d
 		:type training: string
-		:type epochs: int
 		:type save_dir: string
-		:type callback: list
-		:type save: int
 		"""
 		#first, check that we have labels etc
 		if not self.__check():
@@ -213,14 +221,20 @@ class MorphModel(object):
 		#define learning method
 		self.__model.compile(optimizer=self.optimiser, loss=self.loss_function)
 		#self.__attn.compile(optimizer=Adam(), loss='categorical_crossentropy')
-				
-		if callback is None: callbacks = [] #In case some smartass passes a None
+
+		callbacks = [ModelCheckpoint('attnRNN.{epoch:02d}-{val_loss:.2f}.hdf5', 
+											monitor='val_loss', verbose=0, save_best_only=False, 
+											save_weights_only=False, mode='auto', period=1)]
+
+		if self.patience is not None:
+			callbacks.append(EarlyStopping(monitor='val_loss', patience=self.patience))
 
 		self.__hist = self.__model.fit([trainingset_word, 
 										trainingset_label_prefix], 
 										trainingset_label_target, 
 										validation_split=self.validation_split, 
-										batch_size=self.batch_size, epochs=epochs, callbacks=callback, verbose=2)
+										batch_size=self.batch_size, epochs=self.epochs, callbacks=callbacks, 
+										verbose=2)
 
 		#save model
 		self.save(save_dir)
@@ -245,13 +259,15 @@ class MorphModel(object):
 			self.__model.save(os.path.join(dirpath, self.name + ".hdf5"))
 			
 
-	def load(self, filepath):
-		self.__model = load_model(filepath + ".hdf5")
-		self.__attn = load_model(filepath + ".attn")
+	def load(self, dirpath):
+		main_path = os.path.join(dirpath, self.name)
+		self.__model = load_model(os.path.join(main_path, self.name) + ".hdf5")
+		self.__attn = load_model(os.path.join(main_path, self.name) + ".attn")
 
-	def evaluate(self, testdata, header=None, testoutput=None, beam=1):
-		evaluator = ModelEvaluator(self, testdata, testoutputfile=testoutput, classes=header)
-		evaluator.evaluate(beam_size = beam)
+	def evaluate(self, testdatafile, output_file):
+		evaluator = ModelEvaluator(self, testdatafile, testoutputfile=output_file, classes=self.attributes)
+		evaluator.set_params(self.parameters)
+		evaluator.evaluate(beam = self.beam_width, clip=self.clip_len)
 
 	def __encode_string(self, word):
 		return pad_sequences([[ self.__char_encoder[ch] for ch in word.strip().lower() ]], 
@@ -264,6 +280,7 @@ class MorphModel(object):
 
 		label_prefix = [ self.__label_edge_index ]
 		labels = []
+		prob = 0.0
 		encoded_word = self.__encode_string(word)
 
 		for _ in range(self.max_word_length): #max length
@@ -272,12 +289,14 @@ class MorphModel(object):
 			(p, selected_index, label) = self.__distribution(encoded_word, label_prefix)[0]
 
 			if selected_index == self.__label_edge_index:
+				prob += p
 				break
 			
 			label_prefix.append(selected_index)
 			#labels.append(self.__label_decoder[selected_index])
 			labels.append(label)
-		return labels
+			prob += p
+		return (labels, math.exp(prob))
 
 
 	def __distribution(self, encoded_word, prefix, log=True):
@@ -368,50 +387,38 @@ class MorphModel(object):
 #End class
 
 
-def train_new(m, modelsdir, datadir, trainfile):
-	print("Training model")
-
-	if not os.path.exists(modelsdir):
-		print("Creating model directory: " + modelsdir)
-		os.makedirs(modelsdir)
-
-	callbacks = [EarlyStopping(monitor='val_loss', patience=2),
-				 ModelCheckpoint('attnRNN.{epoch:02d}-{val_loss:.2f}.hdf5', monitor='val_loss', verbose=0, save_best_only=False, save_weights_only=False, mode='auto', period=1)]
-	m.train_attention(os.path.join(datadir,trainfile), 100, modelsdir, callback=callbacks)
-	print("Max word length: " + str(m.max_word_length))
-
-
 if __name__ == '__main__':
-	model_name = "attnRNN-adam-val10-i100-pat2.verbs.mood.form"#'attnRNN-adam-val10-i100-pat2.nouns' 
-	data = "../data"
-	training = "gabra-verbs-mood-form-train.tar.bz2"
-	#testing =  'gabra-noun-adj-test.tar.bz2'
-	testing = "gabra-verbs-mood-form-test.tar.bz2"
-	#evalfile = 'nouns_attnRNN-adam-val10-i100-pat2' 
-	evalfile = "verbs_attnRNN-adam-val10-i100-pat2.mood.form.txt"
-	evalheader = ["VFORM", "ASPECT", "MOOD", "POLARITY", "PERSON", "NUMBER", "GENDER"]
-	#evalheader = ["WORD", "NUMBER", "GENDER", "FORM"]
-	#labeldata = 'noun-labels-split.txt' 
-	labeldata = "verb-labels-simpleforms.txt"
-	modelsdir = os.path.join("../models", model_name)
-	testword = "kkastrajna"
+	config = configparser.ConfigParser()
+	config.read('config.ini')
+	mode = config.get('RUN', 'Mode')
+	modelsdir = config.get('DIRS', 'Models')
+	data = config.get('DIRS', 'Data')
+	training = config.get('DATA', 'Train')
+	testing = config.get('DATA', 'Test')
+	evalfile = config.get('DATA', 'Eval')
+	model_params = dict(config['MODEL'])
 
 	#initialise
-	m = MorphModel(model_name)
-	m.read_labels(os.path.join(data, labeldata))
-	m.max_word_length = 18 #Have to set this...
-
-	#train a new model and save to mdoel dir
-	#train_new(m, modelsdir, data, training) 
-
-	#load a pretrained model
-	m.load(os.path.join(modelsdir, model_name))	
+	m = MorphModel(model_params)
 	
-	#evaluate a model on test data 
-	m.evaluate(os.path.join(data, testing), evalheader, os.path.join(modelsdir, evalfile), beam=1)
-	
-	#generate predictions for a string
-	m.print_predictions(testword, beam=7, clip_len=7)
+
+	if mode == 'Evaluate':
+		m.load(modelsdir)
+		outputdir = os.path.join(modelsdir, m.name)
+		outputfile = os.path.join(outputdir, evalfile)
+		m.evaluate(os.path.join(data, testing), outputfile)
+
+	elif mode == 'Train':
+		m.train(os.path.join(datadir,trainfile), modelsdir)
+		print("Max word length: " + str(m.max_word_length))
+
+
+	elif mode == 'Generate':
+		m.load(modelsdir)
+		testwords = config.get('TEST', 'words').split(",")
+		
+		for t in testwords:
+			m.print_predictions(t)
 
 
 
